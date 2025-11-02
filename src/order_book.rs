@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 use crate::order_manager::OrderManager;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use crate::types::{Fill , Fills};
+use crate::iterator::{LevelInfo , LevelsWithCumalativeDepth};
 #[derive(Debug)]
 pub struct PriceLevel{
     pub total_volume : u64,
@@ -266,7 +267,31 @@ impl OrderBook{
         Some(self.last_trade_price.load(Ordering::Relaxed))
     }
 
-    
+    pub fn get_depth(&self , limit:u64)->(Vec<[String ; 3]> , Vec<[String ; 3]>){
+        // tuple of 2 vectros , each with type string and 3 elements 
+        let mut bids = Vec::new();
+        let mut asks = Vec::new();
+
+        for level in LevelsWithCumalativeDepth::new(&self.askside.levels, Side::Ask){
+            asks.push(
+               [
+                level.price.to_string() , level.qty.to_string() , level.cumalative_depth.to_string()
+               ] 
+            );
+        }
+
+        for level in LevelsWithCumalativeDepth::new(&self.bidside.levels, Side::Bid){
+            bids.push(
+               [
+                level.price.to_string() , level.qty.to_string() , level.cumalative_depth.to_string()
+               ] 
+            );
+        }
+
+        (asks , bids)
+
+
+    }
 
 }
 
