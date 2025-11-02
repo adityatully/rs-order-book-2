@@ -253,6 +253,21 @@ impl OrderBook{
         }
         fills
     }
+
+    pub fn get_best_bid(&mut self)->Option<u64>{
+        self.bidside.get_best_price()
+    }
+
+    pub fn get_best_ask(&mut self)->Option<u64>{
+        self.askside.get_best_price()
+    }
+
+    pub fn get_last_trade_price(&self)->Option<u64>{
+        Some(self.last_trade_price.load(Ordering::Relaxed))
+    }
+
+    
+
 }
 
 
