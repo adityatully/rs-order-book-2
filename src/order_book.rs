@@ -2,7 +2,8 @@ use crate::book::BookSide;
 use crate::order::{self, Order, Side};
 use std::collections::VecDeque;
 use crate::order_manager::OrderManager;
-
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use crate::types::{Fill , Fills};
 #[derive(Debug)]
 pub struct PriceLevel{
     pub total_volume : u64,
@@ -10,20 +11,23 @@ pub struct PriceLevel{
     pub orders : VecDeque<Order>,
 }
 
-pub struct Fill{
-    pub price : u64 , 
-    pub quantity : u64 ,
-    pub orderId : u64
-}
+
 #[derive(Debug)]
 pub struct OrderBook{
+    pub symbol : String , 
     pub askside : BookSide,
     pub bidside : BookSide,
+    pub last_trade_price : AtomicU64
 }
 
 impl OrderBook{
-    pub fn new()->Self{
-        Self { askside: BookSide::new(Side::Ask), bidside: BookSide::new(Side::Bid) }
+    pub fn new(symbol : String)->Self{
+        Self {
+            symbol : symbol ,
+            askside: BookSide::new(Side::Ask),
+            bidside: BookSide::new(Side::Bid) ,
+            last_trade_price: AtomicU64::new(0)
+            }
     }
 
 
@@ -34,7 +38,7 @@ impl OrderBook{
         }
     }
 
-    pub fn match_market_order(&mut self , order:&mut Order , manager : &mut OrderManager)->Vec<Fill>{
+    pub fn match_market_order(&mut self , order:&mut Order , manager : &mut OrderManager)->Fills{
         // wejust need to fill the shares 
         //if a very large maket order comes and there are not enough shares for it to eat , its canceled
 
@@ -43,7 +47,7 @@ impl OrderBook{
             Side::Bid => &mut self.askside,
         };  // took a mutable refrence of the side owned by the orderbook 
 
-        let mut fills : Vec<Fill> = vec![];
+        let mut fills = Fills::new();
 
         while order.shares_qty > 0 {
             let best_price = match opposite_side.get_best_price() {
@@ -67,10 +71,11 @@ impl OrderBook{
                         // we get a copy of shares , but we dont need to update the actual because we are deleting
                         let consumed = shares;
                         order.shares_qty = order.shares_qty.saturating_sub(shares);
-                        fills.push(Fill{
+                        fills.add(Fill{
                             price : best_price ,
                             quantity : consumed , 
-                            orderId : order_id,
+                            taker_order_id : order.order_id,
+                            maker_order_id : order_id
                         });
                         manager.all_orders.remove(oldest_order_key);
                         manager.id_to_key.remove(&order_id);
@@ -81,10 +86,11 @@ impl OrderBook{
                         let consumed = order.shares_qty;
                         manager.all_orders.get_mut(oldest_order_key).unwrap().shares_qty -= consumed;
                         // changed in the orignal map too 
-                        fills.push(Fill{
+                        fills.add(Fill{
                             price : best_price ,
                             quantity : consumed , 
-                            orderId : order_id,
+                            taker_order_id : order.order_id,
+                            maker_order_id : order_id
                         });
                         order.shares_qty = 0 ; 
                         // take a mutable refrence and update the shares and then insert 
@@ -106,8 +112,8 @@ impl OrderBook{
     }
 
 
-    pub fn match_bid(&mut self , order: &mut Order , manager : &mut OrderManager)->Vec<Fill>{
-        let mut fills : Vec<Fill> = vec![]; 
+    pub fn match_bid(&mut self , order: &mut Order , manager : &mut OrderManager)->Fills{
+        let mut fills =  Fills::new();
         let opposite_side = &mut  self.askside ;
         // we have a bid to match , the best price shud be the loweest ask 
         
@@ -136,10 +142,11 @@ impl OrderBook{
                         // we get a copy of shares , but we dont need to update the actual because we are deleting
                         let consumed = shares;
                         order.shares_qty = order.shares_qty.saturating_sub(shares);
-                        fills.push(Fill{
+                        fills.add(Fill{
                             price : best_price ,
                             quantity : consumed , 
-                            orderId : order_id,
+                            taker_order_id : order.order_id,
+                            maker_order_id : order_id
                         });
                         manager.all_orders.remove(oldest_order_key);
                         manager.id_to_key.remove(&order_id);
@@ -150,10 +157,11 @@ impl OrderBook{
                         let consumed = order.shares_qty;
                         manager.all_orders.get_mut(oldest_order_key).unwrap().shares_qty -= consumed;
                         // changed in the orignal map too 
-                        fills.push(Fill{
+                        fills.add(Fill{
                             price : best_price ,
                             quantity : consumed , 
-                            orderId : order_id,
+                            taker_order_id : order.order_id,
+                            maker_order_id : order_id
                         });
                         order.shares_qty = 0 ; 
                         // take a mutable refrence and update the shares and then insert 
@@ -176,8 +184,8 @@ impl OrderBook{
         fills
     }
 
-    pub fn match_ask(&mut self , order: &mut Order , manager : &mut OrderManager)->Vec<Fill>{
-        let mut fills : Vec<Fill> = vec![]; 
+    pub fn match_ask(&mut self , order: &mut Order , manager : &mut OrderManager)->Fills{
+        let mut fills = Fills::new();
         let opposite_side = &mut  self.bidside ;
         // we have a bid to match , the best price shud be the loweest ask 
         
@@ -204,10 +212,11 @@ impl OrderBook{
                         // we get a copy of shares , but we dont need to update the actual because we are deleting
                         let consumed = shares;
                         order.shares_qty = order.shares_qty.saturating_sub(shares);
-                        fills.push(Fill{
+                        fills.add(Fill{
                             price : best_price ,
                             quantity : consumed , 
-                            orderId : order_id,
+                            taker_order_id : order.order_id,
+                            maker_order_id : order_id
                         });
                         manager.all_orders.remove(oldest_order_key);
                         manager.id_to_key.remove(&order_id);
@@ -218,10 +227,11 @@ impl OrderBook{
                         let consumed = order.shares_qty;
                         manager.all_orders.get_mut(oldest_order_key).unwrap().shares_qty -= consumed;
                         // changed in the orignal map too 
-                        fills.push(Fill{
+                        fills.add(Fill{
                             price : best_price ,
                             quantity : consumed , 
-                            orderId : order_id,
+                            taker_order_id : order.order_id,
+                            maker_order_id : order_id
                         });
                         order.shares_qty = 0 ; 
                         // take a mutable refrence and update the shares and then insert 
