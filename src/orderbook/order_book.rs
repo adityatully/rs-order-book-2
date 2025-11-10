@@ -18,8 +18,6 @@ pub struct PriceLevel{
 
 #[derive(Debug)]
 pub struct OrderBook{
-    pub order_reciver : mpsc::Receiver<Order>,
-    pub match_res_sender : mpsc::Sender<Event>,
     pub symbol : String , 
     pub askside : BookSide,
     pub bidside : BookSide,
@@ -28,10 +26,8 @@ pub struct OrderBook{
 }
 
 impl OrderBook{
-    pub fn new(symbol : &str , rx : mpsc::Receiver<Order> , sx : mpsc::Sender<Event>)->Self{
+    pub fn new(symbol : &str )->Self{
         Self {
-            order_reciver : rx , 
-            match_res_sender : sx ,
             symbol : String::from(symbol),
             askside: BookSide::new(Side::Ask),
             bidside: BookSide::new(Side::Bid) ,
@@ -307,49 +303,5 @@ impl OrderBook{
 
 
     }
-
-    pub async fn run_orderbook(&mut self  ){
-        while let Some(mut order) = self.order_reciver.recv().await{
-            match order.order_type{
-                Type::Limit => {
-                    match order.side{
-                        Side::Ask =>{
-                            if let Some(events) = self.match_ask(&mut order).ok(){
-                                let match_res_event = Event::MatchResult(events);
-                                let res =  self.match_res_sender.send(match_res_event).await;
-                                if res.is_err(){
-                                    eprint!("error while publlishing ")
-                                }
-                            }
-                        }
-
-                        Side::Bid =>{
-                            if let Some(events) = self.match_bid(&mut order).ok(){
-                                let match_res_event = Event::MatchResult(events);
-                                let res =  self.match_res_sender.send(match_res_event).await;
-                                if res.is_err(){
-                                    eprint!("error while publlishing ")
-                                }
-                               
-                            }
-                        }
-                    }
-                }
-                Type::Market=>{
-                     if let Some(events) = self.match_market_order(&mut order).ok(){
-                        let match_res_event = Event::MatchResult(events);
-                        let res  = self.match_res_sender.send(match_res_event).await;
-                        // sedn depth and price level updates too
-                        // call the get depth function of the order book 
-                        // Add yielding
-                        if res.is_err(){
-                            eprint!("error while publlishing ")
-                        }
-                     }
-                }
-            }
-        }
-    }
-
 }
 
