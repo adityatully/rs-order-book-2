@@ -2,38 +2,28 @@ use memmap2::MmapMut;
 use std::fs::OpenOptions;
 use std::path::Path;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use crate::orderbook::order::ShmOrder;
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct Order {
-    // All u64s first (8-byte aligned)
-    pub order_id: u64,
-    pub price: u64,
-    pub timestamp: u64,
-    // Then u32s (4-byte aligned)
-    pub client_id: u32,
-    pub quantity: u32,
-    // Then u8s (1-byte aligned)
-    pub side: u8,   // 0=buy, 1=sell
-    pub status: u8, // 0=pending, 1=filled, 2=rejected
-    // Array of bytes last
-    pub symbol: [u8; 8],
-}
 
-impl Default for Order {
-    fn default() -> Self {
-        Order {
-            order_id: 0,
-            client_id: 0,
-            symbol: [0; 8],
-            quantity: 0,
-            price: 0,
-            side: 0,
-            timestamp: 0,
-            status: 0,
-        }
-    }
-}
+//#[repr(C)]
+//#[derive(Clone, Copy, Debug)]
+
+//pub struct Order {
+//    // All u64s first (8-byte aligned)
+//    pub order_id: u64,
+//    pub price: u64,
+//    pub timestamp: u64,
+//    // Then u32s (4-byte aligned)
+//    pub client_id: u32,
+//    pub quantity: u32,
+//    // Then u8s (1-byte aligned)
+//    pub side: u8,   // 0=buy, 1=sell
+//    pub status: u8, // 0=pending, 1=filled, 2=rejected
+//    // Array of bytes last
+//    pub symbol: [u8; 8],
+//}
+//
+
 
 // QueueHeader with cache-line padding matching Go
 #[repr(C)]
@@ -48,12 +38,12 @@ pub struct QueueHeader {
 
 const QUEUE_MAGIC: u32 = 0xDEADBEEF;
 const QUEUE_CAPACITY: usize = 65536;
-const ORDER_SIZE: usize = std::mem::size_of::<Order>();
+const ORDER_SIZE: usize = std::mem::size_of::<ShmOrder>();
 const HEADER_SIZE: usize = std::mem::size_of::<QueueHeader>();
 const TOTAL_SIZE: usize = HEADER_SIZE + (QUEUE_CAPACITY * ORDER_SIZE);
 
 // Compile-time layout assertions (fail build if wrong)
-const _: () = assert!(ORDER_SIZE == 48, "Order must be 48 bytes");
+const _: () = assert!(ORDER_SIZE == 40, "Order must be 40 bytes");
 const _: () = assert!(HEADER_SIZE == 136, "QueueHeader must be 136 bytes");
 const _: () = {
     // Verify ConsumerTail is at offset 64
@@ -66,9 +56,8 @@ const _: () = {
 #[derive(Debug)]
 pub struct Queue {
     mmap: MmapMut,
-
     header_ptr: *mut QueueHeader, // Cached pointer
-    orders_ptr: *mut Order,       // Cached orders pointer
+    orders_ptr: *mut ShmOrder,       // Cached orders pointer
 }
 
 impl Queue {
@@ -98,7 +87,7 @@ impl Queue {
 
         // Cache both pointers
         let header_ptr = { mmap.as_mut_ptr() as *mut QueueHeader };
-        let orders_ptr = unsafe { mmap.as_mut_ptr().add(HEADER_SIZE) as *mut Order };
+        let orders_ptr = unsafe { mmap.as_mut_ptr().add(HEADER_SIZE) as *mut ShmOrder };
 
         // Validate
         let header = unsafe { &*header_ptr };
@@ -136,13 +125,13 @@ impl Queue {
 
     /// Get order at position - ZERO COST pointer arithmetic
     #[inline(always)]
-    fn get_order(&self, pos: usize) -> Order {
+    fn get_order(&self, pos: usize) -> ShmOrder {
         unsafe { *self.orders_ptr.add(pos) }
     }
 
     /// Set order at position - ZERO COST pointer arithmetic
     #[inline(always)]
-    fn set_order(&self, pos: usize, order: Order) {
+    fn set_order(&self, pos: usize, order: ShmOrder) {
         unsafe {
             *self.orders_ptr.add(pos) = order;
         }
@@ -150,7 +139,7 @@ impl Queue {
 
     /// ULTRA-FAST dequeue - all pointers cached, no borrows
     #[inline]
-    pub fn dequeue(&mut self) -> Result<Option<Order>, QueueError> {
+    pub fn dequeue(&mut self) -> Result<Option<ShmOrder>, QueueError> {
         let header = self.header_mut();
 
         let producer_head = header.producer_head.load(Ordering::Acquire);
@@ -170,7 +159,7 @@ impl Queue {
         Ok(Some(order))
     }
 
-    pub fn enqueue(&mut self, order: Order) -> Result<(), QueueError> {
+    pub fn enqueue(&mut self, order: ShmOrder) -> Result<(), QueueError> {
         let header = self.header_mut();
 
         let consumer_tail = header.consumer_tail.load(Ordering::Acquire);
@@ -209,7 +198,7 @@ impl Queue {
             .map_err(|e| QueueError::Flush(e.to_string()))
     }
 
-    pub fn dequeue_spin(&mut self, max_spins: usize) -> Result<Option<Order>, QueueError> {
+    pub fn dequeue_spin(&mut self, max_spins: usize) -> Result<Option<ShmOrder>, QueueError> {
         for _ in 0..max_spins {
             match self.dequeue()? {
                 Some(order) => return Ok(Some(order)),
@@ -230,7 +219,7 @@ impl Drop for Queue {
 }
 
 // Error types
-#[derive(Debug)]
+#[derive(Debug , Clone)]
 pub enum QueueError {
     FileOpen(String),
     FileStat(String),
@@ -280,7 +269,7 @@ mod tests {
 
     #[test]
     fn test_layout() {
-        assert_eq!(ORDER_SIZE, 48, "Order must be 48 bytes");
+        assert_eq!(ORDER_SIZE, 40, "Order must be 40 bytes");
         assert_eq!(HEADER_SIZE, 136, "QueueHeader must be 136 bytes");
         assert_eq!(
             std::mem::offset_of!(QueueHeader, consumer_tail),
@@ -296,9 +285,9 @@ mod tests {
 
     #[test]
     fn test_order_default() {
-        let order = Order::default();
+        let order = ShmOrder::default();
         assert_eq!(order.order_id, 0);
-        assert_eq!(order.quantity, 0);
+        assert_eq!(order.shares_qty, 0);
         assert_eq!(order.price, 0);
     }
 

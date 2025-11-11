@@ -1,19 +1,40 @@
-use rust_orderbook_2::orderbook::order_manager::OrderManager;
-use tokio::macros;
+use std::thread::JoinHandle;
 
+use rust_orderbook_2::orderbook::order_book::OrderBook;
+use rust_orderbook_2::orderbook::{order_manager::OrderManager, types::Event};
+use rust_orderbook_2::engine::my_engine::{self, Engine, MyEngine};
+use rust_orderbook_2::publisher::event_publisher::EventPublisher;
+use core_affinity;
+fn main(){
+    let (event_sender , event_rec) = kanal::bounded::<Event>(2000000);
+    let sender_clone = event_sender.clone();
+    let mut  running_engines : Vec<JoinHandle<()>> = Vec::new();
+    let first_join_handle = std::thread::spawn(move ||{
+        let cores = core_affinity::get_core_ids().expect("Failed to get core IDs");
+        core_affinity::set_for_current(core_affinity::CoreId { id:  1 });
+        let mut engine = MyEngine::new(sender_clone , 0);
+        engine.add_book(0);
+        engine.run_engine();
+    });
+    running_engines.push(first_join_handle);
+    drop(event_sender);
 
+    // do the above task in a for loop when we initlaise mutliple engines 
 
-#[tokio::main]
-async fn main(){
-    let manager = OrderManager::new();
-}
+    let publisher_handle  = std::thread::spawn(move||{
+        core_affinity::set_for_current(core_affinity::CoreId { id: 5 });
+        let mut my_publisher = EventPublisher::new(event_rec);
+        my_publisher.start_publisher();
+    });
 
+    for handle in running_engines {
+        handle.join().expect("Engine thread panicked");
+    }
+    
+    publisher_handle.join().expect("Publisher thread panicked");
+    
 
-pub fn start_process(){
-    // this is the main prcess function 
-    // here we can initlaise mutiple engines and then call the funtin engine::start_engine() 
-    // start engine wud spawn a thread which wud contantly listen from the alloted shared memory file 
-    // or another option would be to spawn the thread in this fucntion which the start_engine function having 
-    // only the inifnite loop 
-    // this main fucntion will also spawn the publisher thread 
+    println!("System shutdown");
+    
+
 }

@@ -18,7 +18,7 @@ pub struct PriceLevel{
 
 #[derive(Debug)]
 pub struct OrderBook{
-    pub symbol : String , 
+    pub symbol : u32 , 
     pub askside : BookSide,
     pub bidside : BookSide,
     pub last_trade_price : AtomicU64,
@@ -26,9 +26,9 @@ pub struct OrderBook{
 }
 
 impl OrderBook{
-    pub fn new(symbol : &str )->Self{
+    pub fn new(symbol : u32 )->Self{
         Self {
-            symbol : String::from(symbol),
+            symbol ,
             askside: BookSide::new(Side::Ask),
             bidside: BookSide::new(Side::Bid) ,
             last_trade_price: AtomicU64::new(0),
@@ -121,6 +121,7 @@ impl OrderBook{
 
 
     pub fn match_bid(&mut self , order: &mut Order)->Result<MatchResult , OrderBookError>{
+       // println!("recived the order , matching now");
         let mut fills =  Fills::new();
         let opposite_side = &mut  self.askside ;
         // we have a bid to match , the best price shud be the loweest ask 
@@ -195,6 +196,7 @@ impl OrderBook{
     }
 
     pub fn match_ask(&mut self , order: &mut Order)->Result<MatchResult , OrderBookError>{
+       // println!("recived the order , matching now");
         let mut fills = Fills::new();
         let opposite_side = &mut  self.bidside ;
         // we have a bid to match , the best price shud be the loweest ask 

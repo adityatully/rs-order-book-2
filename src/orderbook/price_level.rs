@@ -6,7 +6,7 @@ use crate::orderbook::order_manager::OrderManager;
 // a particular price level has a linkedList of orderKeys cuurenlty storing the head ans tail 
 pub struct PriceLevel{
     pub price : u64 , 
-    pub total_vol : u64 , 
+    pub total_vol : u32 , 
     pub head : Option<OrderKey>,
     pub tail : Option<OrderKey>
 }
@@ -140,7 +140,7 @@ impl PriceLevel{
 
     }
 
-    pub fn get_total_volume(&self )->u64{
+    pub fn get_total_volume(&self )->u32{
         self.total_vol
     }
     pub fn remove_oldest_order(&mut self , manager : &mut OrderManager)->Option<OrderKey>{

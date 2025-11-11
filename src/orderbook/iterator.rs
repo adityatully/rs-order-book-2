@@ -6,13 +6,13 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub struct LevelInfo{
     pub price : u64 , 
-    pub qty : u64 , 
-    pub cumalative_depth : u64
+    pub qty : u32 , 
+    pub cumalative_depth : u32
 }
 
 pub struct LevelsWithCumalativeDepth<'a>{
     iter : Box<dyn Iterator<Item = (&'a u64, &'a PriceLevel)> + 'a>,
-    cumalative_depth : u64
+    cumalative_depth : u32
 }
 
 impl<'a> LevelsWithCumalativeDepth<'a>{

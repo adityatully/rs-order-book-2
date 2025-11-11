@@ -4,7 +4,7 @@ pub type OrderId = u64;
 #[derive(Debug)]
 pub struct Fill{
     pub price : u64 , 
-    pub quantity : u64 ,
+    pub quantity : u32 ,
     // taker orderid -> incoming order tht caused the match 
     pub taker_order_id : OrderId,
     // the order that was on the book that caused the match 
@@ -12,7 +12,7 @@ pub struct Fill{
 }
 
 impl Fill{
-    pub fn new(price:u64 , quantity:u64 , taker_order_id : OrderId , maker_order_id : OrderId) -> Self{
+    pub fn new(price:u64 , quantity:u32 , taker_order_id : OrderId , maker_order_id : OrderId) -> Self{
         Self{
              price  ,
              quantity , 
@@ -23,7 +23,7 @@ impl Fill{
     }
 
     pub fn total_volume(&self)->u64{
-        self.price * self.quantity
+        self.price * self.quantity as u64
     }
 }
 #[derive(Debug)]
@@ -49,11 +49,11 @@ pub struct MatchResult{
     /// The ID of the incoming order that initiated the match
     pub order_id : OrderId , 
     pub fills : Fills,
-    pub remaining_qty : u64,
+    pub remaining_qty : u32,
 }
 
 impl MatchResult{
-    pub fn new(order_id: OrderId, initial_quantity: u64)->Self{
+    pub fn new(order_id: OrderId, initial_quantity: u32)->Self{
         Self { order_id , fills: Fills::new(), remaining_qty: initial_quantity }
     }
     pub fn add_transaction(&mut self , fill : Fill){
