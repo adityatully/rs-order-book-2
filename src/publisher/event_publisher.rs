@@ -13,9 +13,25 @@ impl EventPublisher {
         
     }
     pub fn start_publisher(&mut self){
-        while let Some(_event) = self.reciever.recv().ok() {
-            // publish to kafka or our message broker 
-            //println!("event recied {:?}" ,event);
+        // ADD BATCH PUBLISHING HERE BEFORE 
+        let mut count = 0u64;
+        let mut last_log = std::time::Instant::now();
+        loop {
+            match self.reciever.recv() {
+                Ok(_event)=>{
+                    count += 1;
+                }
+                Err(_) => {
+                    println!("[PUBLISHER] Channel closed, exiting");
+                    break;
+                }
+            }
+            if last_log.elapsed().as_secs() >= 5 {
+                let rate = count as f64 / last_log.elapsed().as_secs_f64();
+                eprintln!("[PUBLISHER RECEIVER] {:.2}M events/sec", rate / 1_000_000.0);
+                count = 0;
+                last_log = std::time::Instant::now();
+            }
         }
     }
 }

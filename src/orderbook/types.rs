@@ -28,13 +28,13 @@ impl Fill{
 }
 #[derive(Debug)]
 pub struct Fills{
-    fills : Vec<Fill>
+    pub fills : Vec<Fill>
 }
 
 impl Fills{
     pub fn new()->Self{
         Self{
-            fills : Vec::new()
+            fills : Vec::with_capacity(1000)
         }
     }
 

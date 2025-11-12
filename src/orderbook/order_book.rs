@@ -139,8 +139,8 @@ impl OrderBook{
                 let level = opposite_side.levels.get_mut(&best_price).unwrap();
                 // we got the price Level we start matchng 
                 while order.shares_qty > 0 && level.check_if_empty() == false{
-                    let mut oldest_order_key = level.remove_oldest_order(&mut self.manager).unwrap();
-                    let (mut shares , order_id , mut next_order_key) = {
+                    let  oldest_order_key = level.remove_oldest_order(&mut self.manager).unwrap();
+                    let ( shares , order_id , mut next_order_key) = {
                         let oldest_order = self.manager.all_orders.get_mut(oldest_order_key).unwrap();
                         (oldest_order.shares_qty , oldest_order.order_id , oldest_order.next)
                     };
@@ -188,8 +188,25 @@ impl OrderBook{
         }
         if order.shares_qty > 0 {
             // this will go into the order book 
-            self.bidside.insert(order.clone() , &mut self.manager);
+            let remaining_order = Order{
+                order_id : order.order_id , 
+                side : order.side , 
+                shares_qty : order.shares_qty ,
+                timestamp : order.timestamp , 
+                price : order.price ,
+                next : None , 
+                prev : None,
+                symbol : order.symbol
+            };
+            self.bidside.insert(remaining_order , &mut self.manager);
         }
+        if !fills.fills.is_empty(){
+            self.last_trade_price.store(
+                fills.fills.last().unwrap().price,
+                Ordering::Relaxed,
+            );
+        }
+
         Ok(MatchResult{
             order_id : order.order_id , fills , remaining_qty : order.shares_qty
         })
@@ -261,7 +278,23 @@ impl OrderBook{
         }
         if order.shares_qty > 0 {
             // this will go into the order book 
-            self.askside.insert(order.clone() , &mut self.manager);
+            let remaining_order = Order{
+                order_id : order.order_id , 
+                side : order.side , 
+                shares_qty : order.shares_qty ,
+                timestamp : order.timestamp , 
+                price : order.price ,
+                next : None , 
+                prev : None,
+                symbol : order.symbol
+            };
+            self.askside.insert(remaining_order, &mut self.manager);
+        }
+        if !fills.fills.is_empty(){
+            self.last_trade_price.store(
+                fills.fills.last().unwrap().price,
+                Ordering::Relaxed,
+            );
         }
         Ok(MatchResult{
             order_id : order.order_id , fills , remaining_qty : order.shares_qty
