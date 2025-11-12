@@ -1,24 +1,30 @@
-use tokio::sync::mpsc;
+use crossbeam::channel::Receiver;
 use crate::orderbook::types::Event;
-use kanal::Receiver;
-pub struct EventPublisher{
-    reciever : kanal::Receiver<Event>
+
+pub struct EventPublisher {
+    receiver: Receiver<Event>,
 }
 
 impl EventPublisher {
-    pub fn new(rx : kanal::Receiver<Event>)->Self{
-        Self{
-            reciever : rx
-        }
-        
+    pub fn new(rx: Receiver<Event>) -> Self {
+        Self { receiver: rx }
     }
-    pub fn start_publisher(&mut self){
-        // ADD BATCH PUBLISHING HERE BEFORE 
+
+    pub fn start_publisher(&mut self) {
+        let mut batch = Vec::with_capacity(10_000);
         let mut count = 0u64;
+        let mut total_batches = 0u64;
         let mut last_log = std::time::Instant::now();
+        
+        println!("[PUBLISHER] Started (crossbeam batched mode)");
+        
         loop {
-            match self.reciever.recv() {
-                Ok(_event)=>{
+            batch.clear();
+            
+            // Blocking recv (wait for first event)
+            match self.receiver.recv() {
+                Ok(event) => {
+                    batch.push(event);
                     count += 1;
                 }
                 Err(_) => {
@@ -26,10 +32,33 @@ impl EventPublisher {
                     break;
                 }
             }
+            
+            //  Non-blocking drain (get up to 9,999 more)
+            for event in self.receiver.try_iter().take(9_999) {
+                batch.push(event);
+                count += 1;
+            }
+            
+            total_batches += 1;
+            
+            // Step 3: Process batch (currently just drops)
+            // TODO: When publishing to Kafka:
+            // publish_batch_to_kafka(&batch);
+            
+            // Step 4: Stats every 5 seconds
             if last_log.elapsed().as_secs() >= 5 {
                 let rate = count as f64 / last_log.elapsed().as_secs_f64();
-                eprintln!("[PUBLISHER RECEIVER] {:.2}M events/sec", rate / 1_000_000.0);
+                let avg_batch_size = if total_batches > 0 {
+                    count as f64 / total_batches as f64
+                } else {
+                    0.0
+                };
+                
+                eprintln!("[PUBLISHER] {:.2}M events/sec, avg batch: {:.0}",
+                    rate / 1_000_000.0, avg_batch_size);
+                
                 count = 0;
+                total_batches = 0;
                 last_log = std::time::Instant::now();
             }
         }

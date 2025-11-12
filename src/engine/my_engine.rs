@@ -26,11 +26,11 @@ pub struct MyEngine{
     pub engine_id :usize ,
     pub book_count : usize, 
     pub books : HashMap< u32 , OrderBook>,
-    pub event_publisher : kanal::Sender<Event>
+    pub event_publisher : crossbeam::channel::Sender<Event>
 }
 
 impl MyEngine{
-    pub fn new(event_publisher : kanal::Sender<Event> , engine_id : usize)->Self {
+    pub fn new(event_publisher :  crossbeam::channel::Sender<Event>, engine_id : usize)->Self {
         // initialise the publisher channel here 
         
             Self{
@@ -79,8 +79,7 @@ impl MyEngine{
                             Side::Bid => order_book.match_bid(&mut my_order),
                             Side::Ask => order_book.match_ask(&mut my_order)
                         };
-                        
-                        let sent_events = self.event_publisher.send(Event::MatchResult(events.ok().unwrap()));
+                        let _ = self.event_publisher.send(Event::MatchResult(events.ok().unwrap()));
                     }
                     count+=1;
                     if last_log.elapsed().as_secs() >= 2 {
