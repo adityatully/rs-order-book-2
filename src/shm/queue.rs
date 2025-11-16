@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn test_layout() {
-        assert_eq!(ORDER_SIZE, 40, "Order must be 40 bytes");
+        assert_eq!(ORDER_SIZE, 48, "Order must be 48 bytes");
         assert_eq!(HEADER_SIZE, 136, "QueueHeader must be 136 bytes");
         assert_eq!(
             std::mem::offset_of!(QueueHeader, consumer_tail),

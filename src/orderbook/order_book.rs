@@ -329,5 +329,23 @@ impl OrderBook{
 
 
     }
+
+    pub fn cancel_order(&mut self ,order_id : u64){
+       if let Some(&order_index) = self.manager.id_to_index.get(&order_id){
+            // we got the orderIndex 
+            let (side , price) = {
+                let order = self.manager.get(order_index).unwrap();
+                (order.side , order.price)
+            };
+            match side{
+                Side::Ask => {
+                    self.askside.delete_order(price, &mut self.manager, order_id);
+                },
+                Side::Bid => {
+                    self.bidside.delete_order(price, &mut self.manager, order_id);
+                }
+            }
+       }
+    }
 }
 
