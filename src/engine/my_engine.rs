@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use dashmap::DashMap;
-
 use crate::orderbook::order::{Order, Side};
 use crate::orderbook::types::Event ;
 use crate::orderbook::order_book::OrderBook;

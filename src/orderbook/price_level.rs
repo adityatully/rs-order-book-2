@@ -18,7 +18,6 @@ impl PriceLevel{
             total_vol: 0 , 
             head : None , 
             tail : None , 
-   
         }
     }
     // when a limitn order cannot be fuldilled it will be required to be inserted in the order book

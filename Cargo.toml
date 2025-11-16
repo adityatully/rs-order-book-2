@@ -18,3 +18,8 @@ core_affinity = "0.8"
 crossbeam = "0.8.4"
 dashmap = "6.1.0"
 rustc-hash = { version = "2.1" }
+
+[[bin]]
+name = "producer"
+path = "src/bin/producer.rs"
+
