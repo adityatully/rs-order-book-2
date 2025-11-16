@@ -7,8 +7,8 @@ use crate::orderbook::order_manager::OrderManager;
 pub struct PriceLevel{
     pub price : u64 , 
     pub total_vol : u32 , 
-    pub head : Option<OrderKey>,
-    pub tail : Option<OrderKey>
+    pub head : Option<usize>,
+    pub tail : Option<usize>
 }
 
 // let head is front and tail is back , oldest at head highest priority , we will insert at tail

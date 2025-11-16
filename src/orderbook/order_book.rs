@@ -7,13 +7,6 @@ use std::sync::atomic::{ AtomicU64, Ordering};
 use crate::orderbook::types::{Fill , Fills , MatchResult  , OrderBookError};
 use crate::orderbook::iterator:: LevelsWithCumalativeDepth;
 
-#[derive(Debug)]
-pub struct PriceLevel{
-    pub total_volume : u64,
-    pub price : u64, 
-    pub orders : VecDeque<Order>,
-}
-
 
 #[derive(Debug)]
 pub struct OrderBook{
