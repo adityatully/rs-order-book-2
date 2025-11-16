@@ -40,5 +40,8 @@ impl BookSide{
             }
         }
     }
+    pub fn delete_order(&mut self , price : u64 , manager : &mut OrderManager , order_id : u64){
+        self.levels.get_mut(&price).as_deref_mut().unwrap().delete_order(order_id, manager);
+    }
 
 }
