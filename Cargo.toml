@@ -16,3 +16,7 @@ static_assertions = "1.1.0"
 kanal = "0.1"
 core_affinity = "0.8"
 crossbeam = "0.8.4"
+
+[[bin]]
+name = "producer"
+path = "src/bin/producer.rs"
