@@ -3,6 +3,7 @@ use crate::orderbook::types::Event;
 
 pub struct EventPublisher {
     receiver: Receiver<Event>,
+    
 }
 
 impl EventPublisher {

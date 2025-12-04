@@ -36,7 +36,7 @@ impl OrderManager{
         index
     }
 
-    pub fn remove_order(&mut self, order_id: u64) {
+    pub fn remove_order(&mut self, order_id: u64){
         if let Some(&order_index) = self.id_to_index.get(&order_id) {
             self.all_orders[order_index] = None;   
             self.free_list.push(order_index);      
