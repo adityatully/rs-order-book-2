@@ -109,3 +109,7 @@ pub struct PublishSuccess{
 pub struct BalanceManagerError{
 
 }
+
+pub struct BalanceInfo{
+    
+}

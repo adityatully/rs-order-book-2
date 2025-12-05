@@ -5,6 +5,8 @@ use rust_orderbook_2::publisher::event_publisher::EventPublisher;
 use core_affinity;
 
 fn main(){
+    // initialise balance manager on bootup 
+    // expose a function that can be called by the api through grpc when request hits the singup endpoint , to initialise that users balance 
     let (event_sender , event_rec) = crossbeam::channel::bounded::<Event>(10000000);
     let sender_clone = event_sender.clone();
     let mut  running_engines : Vec<JoinHandle<()>> = Vec::new();
