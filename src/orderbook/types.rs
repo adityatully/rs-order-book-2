@@ -106,8 +106,9 @@ pub struct PublishSuccess{
     
 }
 
-pub struct BalanceManagerError{
-
+pub enum BalanceManagerError{
+    InsufficientFunds ,
+    BalanceLockingFailed
 }
 
 pub struct BalanceInfo{

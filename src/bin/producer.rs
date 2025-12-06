@@ -50,14 +50,13 @@ fn main() {
     let mut order = ShmOrder {
         user_id  : 10 , 
         order_id: 0,
-        client_id: 1001,
         shares_qty: 100,
         symbol: 100,
         status: 0,
         side: 0,
         price: 0,
         timestamp: current_time_ns(),
-        _padding: [0; 10],
+        _padding: [0; 14],
     };
 
     let prices = [49999_u64, 50000, 50001];
