@@ -8,12 +8,15 @@
 // balance manager has 3 responsibilities  update balances from fills , reading from a channel 
 // read from the SHM queue for the new order 
 // The balanaces and holdings will be in a shared state for the grpc server and the balance manager 
+// avalable means free balance or holdings that can be reserved 
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64 , AtomicU32 };
+use std::sync::atomic::{AtomicU64 , AtomicU32  , Ordering};
 use dashmap::DashMap;
-use crate::orderbook::types::{BalanceManagerError , MatchResult};
-use crate::orderbook::order::Order;
+use crossbeam::channel::{Sender , Receiver};
+//use dashmap::DashMap;
+use crate::orderbook::types::{BalanceManagerError , MatchResult };
+use crate::orderbook::order::{Order , Side};
 const MAX_USERS: usize = 10_000_000; // pre allocating for a max of 10 million users 
 const MAX_SYMBOLS : usize = 100 ; 
 const DEFAULT_BALANCE : u64 = 10000;
@@ -41,13 +44,17 @@ impl Default for UserBalance{
 }
 pub struct UserHoldings{
     pub user_id: u64,     // 8 byte 
-    pub user_holdings : [AtomicU32 ; MAX_SYMBOLS],
+    pub available_holdings : [AtomicU32 ; MAX_SYMBOLS],
+    pub reserved_holdings : [AtomicU32 ; MAX_SYMBOLS]
 }
 impl Default for UserHoldings{
     fn default() -> Self {
         UserHoldings {
             user_id: 0,
-            user_holdings: unsafe { std::mem::zeroed() },  // Faster than from_fn
+            available_holdings: unsafe { std::mem::zeroed() },  // Faster than from_fn
+            reserved_holdings : unsafe {
+                std::mem::zeroed()
+            }
         }
     }
 }
@@ -62,8 +69,8 @@ pub struct SharedBalanceState{
 impl SharedBalanceState {
     pub fn new() -> Self {
         Self {
-            balances: Arc::new(Box::new(unsafe { std::mem::zeroed() })),
-            holdings: Arc::new(Box::new(unsafe { std::mem::zeroed() })),
+            balances: Arc::new(Box::new(std::array::from_fn(|_| UserBalance::default()))),
+            holdings: Arc::new(Box::new(std::array::from_fn(|_| UserHoldings::default()))),
             user_id_to_index: Arc::new(DashMap::with_capacity(MAX_USERS)),
             next_free_slot: AtomicU32::new(0),
             total_users: AtomicU32::new(0),
@@ -79,6 +86,7 @@ impl Default for SharedBalanceState {
 pub struct MyBalanceManager{
     pub order_sender : crossbeam::channel::Sender<Order>,
     pub fill_recv : crossbeam::channel::Receiver<MatchResult>,
+    pub order_receiver : crossbeam::channel::Receiver<Order>,
     pub state : Arc<SharedBalanceState>,
 }
 //pub trait BalanceManagerTrait{
@@ -87,19 +95,67 @@ pub struct MyBalanceManager{
 //}
 
 impl MyBalanceManager{
-    pub fn new(order_sender : crossbeam::channel::Sender<Order> , fill_recv : crossbeam::channel::Receiver<MatchResult>)->(Self , Arc<SharedBalanceState>){
+    pub fn new(order_sender : Sender<Order> , fill_recv :Receiver<MatchResult> , order_receiver : Receiver<Order>)->(Self , Arc<SharedBalanceState>){
         let shared_state = Arc::new(SharedBalanceState::new());
         (Self { 
             order_sender, 
             fill_recv,
+            order_receiver, 
             state: Arc::clone(&shared_state)
          }
          , shared_state)
     }
+    pub fn get_user_index(&self , user_id : u64 )->Result<u32 , BalanceManagerError>{
+        self.state.user_id_to_index
+        .get(&user_id).map(|index| *index)
+        .ok_or(BalanceManagerError::UserNotFound)
+    }
 
+    pub fn get_user_balance(&self , user_index : u32 )->&UserBalance{
+        &self.state.balances[user_index as usize]
+    }
+    pub fn get_user_holdings(&self , user_index : u32)->&UserHoldings{
+        &self.state.holdings[user_index as usize]
+    }
+    
     //// returned the state so that it can be passed to the grpc server 
-    //pub fn check_and_lock_funds(&mut self , order : Order)->Result<() , BalanceManagerError>{
-    //    // currently for liit orders , we get an order 
-    //    
-    //}
+    pub fn check_and_lock_funds(& self , order : Order)->Result<() , BalanceManagerError>{
+        // currently for limit orders , we get an order 
+        // we have user id , symbol , side , holfings 
+        let user_index = self.get_user_index(order.user_id)?;   // fatal error , return immidieately to the function who is calling
+        let balance = self.get_user_balance(user_index);
+        let holdings = self.get_user_holdings(user_index);
+
+        match order.side {
+            Side::Ask =>{
+                // wants to sell 
+                let avalable_holdings_for_symbol = holdings.available_holdings[order.symbol as usize].load(Ordering::Acquire);
+                let reserved_holdings_for_symbol = holdings.reserved_holdings[order.symbol as usize].load(Ordering::Acquire);
+
+                if order.shares_qty > avalable_holdings_for_symbol{
+                    return Err(BalanceManagerError::InsufficientFunds);
+                }
+                holdings.available_holdings[order.symbol as usize].store(avalable_holdings_for_symbol - order.shares_qty , Ordering::Release);
+                holdings.reserved_holdings[order.symbol as usize].store(reserved_holdings_for_symbol + order.shares_qty , Ordering::Release);
+            }
+            Side::Bid =>{
+                // wants to buy  , if balacne > price * qty , we can rserve 
+                // avalable is the free balance right now and reserved is what is alr reserved 
+                let required_balance = order.price*order.shares_qty as u64;
+                let avalaible_balance = balance.available_balance.load(Ordering::Acquire);
+                let reserved_balance = balance.reserved_balance.load(Ordering::Acquire);
+
+                if required_balance > avalaible_balance {
+                    return Err(BalanceManagerError::InsufficientFunds);
+                }
+                // we can reserv and and pass on the order to the matching egnine 
+                balance.available_balance.store(avalaible_balance - required_balance , Ordering::Release);
+                balance.reserved_balance.store(reserved_balance+required_balance , Ordering::Release);   
+            }
+        }
+
+        Ok(())
+
+
+    }
 }
