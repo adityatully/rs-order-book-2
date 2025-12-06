@@ -56,9 +56,9 @@ impl OrderBook{
                 // we got the price Level we start matchng 
                 while order.shares_qty > 0 && level.check_if_empty() == false{
                     let  oldest_order_key = level.remove_oldest_order(&mut self.manager).unwrap();
-                    let ( shares , order_id ) = {
+                    let ( shares , order_id , user_id) = {
                         let oldest_order =  self.manager.get_mut(oldest_order_key).unwrap();
-                        (oldest_order.shares_qty , oldest_order.order_id )
+                        (oldest_order.shares_qty , oldest_order.order_id , oldest_order.user_id )
                     };
 
                     if order.shares_qty >= shares{
@@ -71,7 +71,10 @@ impl OrderBook{
                             price : best_price ,
                             quantity : consumed , 
                             taker_order_id : order.order_id,
-                            maker_order_id : order_id
+                            maker_order_id : order_id , 
+                            maker_user_id : user_id , 
+                            taker_user_id : order.user_id , 
+                            symbol : self.symbol
                         });
                          self.manager.remove_order(order_id);
                          
@@ -86,7 +89,10 @@ impl OrderBook{
                             price : best_price ,
                             quantity : consumed , 
                             taker_order_id : order.order_id,
-                            maker_order_id : order_id
+                            maker_order_id : order_id,
+                            maker_user_id : user_id , 
+                            taker_user_id : order.user_id , 
+                            symbol : self.symbol
                         });
                         order.shares_qty = 0 ; 
                         // take a mutable refrence and update the shares and then insert 
@@ -133,9 +139,9 @@ impl OrderBook{
 
 
                     let  oldest_order_key = level.remove_oldest_order(&mut self.manager).unwrap();
-                    let ( shares , order_id ) = {
+                    let ( shares , order_id , user_id) = {
                         let oldest_order = self.manager.get_mut(oldest_order_key).unwrap();
-                        (oldest_order.shares_qty , oldest_order.order_id )
+                        (oldest_order.shares_qty , oldest_order.order_id , oldest_order.user_id )
                     };
 
                     if order.shares_qty >= shares{
@@ -148,7 +154,10 @@ impl OrderBook{
                             price : best_price ,
                             quantity : consumed , 
                             taker_order_id : order.order_id,
-                            maker_order_id : order_id
+                            maker_order_id : order_id,
+                            maker_user_id : user_id , 
+                            taker_user_id : order.user_id , 
+                            symbol : self.symbol
                         });
                         self.manager.remove_order(order_id);
                     }
@@ -162,7 +171,10 @@ impl OrderBook{
                             price : best_price ,
                             quantity : consumed , 
                             taker_order_id : order.order_id,
-                            maker_order_id : order_id
+                            maker_order_id : order_id,
+                            maker_user_id : user_id , 
+                            taker_user_id : order.user_id , 
+                            symbol : self.symbol
                         });
                         order.shares_qty = 0 ; 
                         // take a mutable refrence and update the shares and then insert 
@@ -225,9 +237,9 @@ impl OrderBook{
                 // we got the price Level we start matchng 
                 while order.shares_qty > 0 && level.check_if_empty() == false{
                     let  oldest_order_key = level.remove_oldest_order(&mut self.manager).unwrap();
-                    let ( shares , order_id ) = {
+                    let ( shares , order_id , user_id) = {
                         let oldest_order = self.manager.get_mut(oldest_order_key).unwrap();
-                        (oldest_order.shares_qty , oldest_order.order_id )
+                        (oldest_order.shares_qty , oldest_order.order_id  , oldest_order.user_id)
                     };
 
                     if order.shares_qty >= shares{
@@ -238,7 +250,10 @@ impl OrderBook{
                             price : best_price ,
                             quantity : consumed , 
                             taker_order_id : order.order_id,
-                            maker_order_id : order_id
+                            maker_order_id : order_id,
+                            maker_user_id : user_id , 
+                            taker_user_id : order.user_id , 
+                            symbol : self.symbol
                         });
                         self.manager.remove_order(order_id);
                     }
@@ -252,7 +267,10 @@ impl OrderBook{
                             price : best_price ,
                             quantity : consumed , 
                             taker_order_id : order.order_id,
-                            maker_order_id : order_id
+                            maker_order_id : order_id,
+                            maker_user_id : user_id , 
+                            taker_user_id : order.user_id , 
+                            symbol : self.symbol
                         });
                         order.shares_qty = 0 ; 
                         // take a mutable refrence and update the shares and then insert 

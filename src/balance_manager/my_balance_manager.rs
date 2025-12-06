@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicU64 , AtomicU32  , Ordering};
 use dashmap::DashMap;
 use crossbeam::channel::{Sender , Receiver};
 //use dashmap::DashMap;
-use crate::orderbook::types::{BalanceManagerError , MatchResult };
+use crate::orderbook::types::{BalanceManagerError, Fills, MatchResult };
 use crate::orderbook::order::{Order , Side};
 const MAX_USERS: usize = 10_000_000; // pre allocating for a max of 10 million users 
 const MAX_SYMBOLS : usize = 100 ; 
@@ -125,7 +125,6 @@ impl MyBalanceManager{
         let user_index = self.get_user_index(order.user_id)?;   // fatal error , return immidieately to the function who is calling
         let balance = self.get_user_balance(user_index);
         let holdings = self.get_user_holdings(user_index);
-
         match order.side {
             Side::Ask =>{
                 // wants to sell 
@@ -153,9 +152,13 @@ impl MyBalanceManager{
                 balance.reserved_balance.store(reserved_balance+required_balance , Ordering::Release);   
             }
         }
-
         Ok(())
-
-
     }
+
+    //pub fn update_balances_after_trade(&self , order_fills : Fills)->Result<() , BalanceManagerError>{
+    //    // we get all the fills 
+    //    // fills have price , qty , taker_order_ id , and maker_order_id 
+    //    // for each fill we need to fetch the orders , using the order Manager for that partiuclar symbol 
+    //    // or we can include maker _ user id and taker user id in fills , and symbol too 
+    //}
 }

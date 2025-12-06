@@ -21,7 +21,7 @@ pub struct Order{
 }
 
 impl Order{
-    pub fn new(user_id : u64 ,order_id : u64 , side : Side , shares_qty : u32 , price : u64 , timestamp :u64 , symbol : u32)->Self{
+    pub fn new(user_id : u64 ,order_id : OrderId , side : Side , shares_qty : u32 , price : u64 , timestamp :u64 , symbol : u32)->Self{
         Self{
             user_id,
             order_id ,
