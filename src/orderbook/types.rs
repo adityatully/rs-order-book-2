@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use crate::orderbook::order::Side;
 pub type OrderId = u64;
-#[derive(Debug)]
+#[derive(Debug , Clone , Copy)]
 pub struct Fill{
     pub price : u64 , 
     pub quantity : u32 ,
@@ -33,7 +33,7 @@ impl Fill{
         self.price * self.quantity as u64
     }
 }
-#[derive(Debug)]
+#[derive(Debug  , Clone)]
 pub struct Fills{
     pub fills : Vec<Fill>
 }
@@ -51,7 +51,7 @@ impl Fills{
 
 }
 // this can be given back to the Api using the pubsub
-#[derive(Debug)]
+#[derive(Debug , Clone)]
 pub struct MatchResult{
     /// The ID of the incoming order that initiated the match
     pub order_id : OrderId , 
