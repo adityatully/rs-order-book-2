@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use crate::orderbook::order::{Order, Side};
-use crate::orderbook::types::{Event, Fill} ;
+use crate::orderbook::types::{Event, Fills} ;
 use crate::orderbook::order_book::OrderBook;
 use crate::shm::queue::Queue;
-use crossbeam::channel::{Sender};
+use crossbeam::channel::{Sender , Receiver};
 
 pub trait Engine{
     fn add_book(&mut self , symbol : u32);
@@ -21,11 +21,12 @@ pub struct MyEngine{
     pub books : HashMap<u32 , OrderBook>,
     pub event_publisher : Sender<Event>,
     pub test_orderbook : OrderBook,
-    pub sender_to_balance_manager : Sender<Fill>
+    pub sender_to_balance_manager : Sender<Fills>,
+    pub order_receiver :Receiver<Order>
 }
 
 impl MyEngine{
-    pub fn new(event_publisher : Sender<Event>, engine_id : usize , sender_to_balance_manager: Sender<Fill>)->Self {
+    pub fn new(event_publisher : Sender<Event>, engine_id : usize , sender_to_balance_manager: Sender<Fills> , order_receiver :Receiver<Order>)->Self {
         // initialise the publisher channel here 
         
             Self{
@@ -34,74 +35,33 @@ impl MyEngine{
                 books : HashMap::new(),
                 event_publisher  ,
                 test_orderbook : OrderBook::new(100),
-                sender_to_balance_manager
+                sender_to_balance_manager , 
+                order_receiver
             } 
             
     }
     pub fn run_engine(&mut self ){
-        // the queue struct (shared memory file will be initialised by the producer )
-        // we need to initlaise a queue struct here and then start listening to it in an infinite loop
-        // on reciveing the order we shud call the match function after serialising the order 
-
-        let mut queue = match Queue::open("/tmp/sex") {
-            Ok(q)=>q,
-            Err(e)=>{
-                eprint!("error occoured {}"  , e);
-                return;
-            }
-        };
-        let mut count = 0u64;
-        let mut last_log = std::time::Instant::now();
         
         loop {
-            match queue.dequeue() {
-                Ok(Some(shm_order))=>{
-                    
-                    //println!("got the shm order");
-                    let order_side = match  shm_order.side {
-                        0 => {
-                            Side::Bid
-                        },
-                        1=>{
-                            Side::Ask
-                        }
-                        _ => {
-                            continue;
-                        }
-                    };
-                    let mut my_order = Order::new(shm_order.user_id , shm_order.order_id, order_side, shm_order.shares_qty, shm_order.price, shm_order.timestamp, shm_order.symbol);
-                    
-                    if let Some(order_book) = self.get_book_mut(my_order.symbol){
-                        let events = match order_side {
-                            Side::Bid => order_book.match_bid(&mut my_order),
-                            Side::Ask => order_book.match_ask(&mut my_order)
+            match self.order_receiver.recv() {
+                Ok(mut recieved_order)=>{
+                    if let Some(order_book) = self.get_book_mut(recieved_order.symbol){
+                        let events = match recieved_order.side {
+                            Side::Bid => order_book.match_bid(&mut recieved_order),
+                            Side::Ask => order_book.match_ask(&mut recieved_order)
                         };
+
+                        
                         //println!("{:?}" , events);
                         if let Ok(match_result)=events{
-                            let _ = self.event_publisher.send(Event::MatchResult(match_result));
+                            //let _ = self.event_publisher.send(Event::MatchResult(match_result));
+                            // TODO , SEPRATE MATCH RESULT FROM FILLS SO THAT WE CAN PUBLISHJ TO 2 DIFFERENT PLACES 
+                            let _ = self.sender_to_balance_manager.send(match_result.fills);
                         }
                     }
-                    //let test_events = match order_side {
-                    //    Side::Bid => self.test_orderbook.match_bid(&mut my_order),
-                    //    Side::Ask => self.test_orderbook.match_ask(&mut my_order)
-                    //};
-                    //if let Ok(match_result) = test_events{
-                    //    let _ = self.event_publisher.send(Event::MatchResult(match_result));
-                    //}
-                    count+=1;
-                    if last_log.elapsed().as_secs() >= 2 {
-                        let rate = count as f64 / last_log.elapsed().as_secs_f64();
-                        eprintln!("[MATCH ONLY] {:.2}M orders/sec", rate / 1_000_000.0);
-                        count = 0;
-                        last_log = std::time::Instant::now();
-                    }
-                
-                }
-                Ok(None)=>{
-                    //println!("order not reiceved");
                 }
                 Err(_)=>{
-                    println!("Some errorr");
+
                 }
             }
         }
@@ -138,3 +98,5 @@ impl Engine for MyEngine{
     
 
 }
+
+

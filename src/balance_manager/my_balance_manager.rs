@@ -13,10 +13,10 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64 , AtomicU32  , Ordering};
 use dashmap::DashMap;
-use crossbeam::channel::{Sender , Receiver};
+use crossbeam::channel::{Receiver, SendError, Sender};
 //use dashmap::DashMap;
 use crate::orderbook::types::{BalanceManagerError, Fill, Fills, MatchResult };
-use crate::orderbook::order::{Order , Side};
+use crate::orderbook::order::{self, Order, Side};
 const MAX_USERS: usize = 10_000_000; // pre allocating for a max of 10 million users 
 const MAX_SYMBOLS : usize = 100 ; 
 const DEFAULT_BALANCE : u64 = 10000;
@@ -119,7 +119,7 @@ impl MyBalanceManager{
     }
     
     //// returned the state so that it can be passed to the grpc server 
-    pub fn check_and_lock_funds(& self , order : Order)->Result<() , BalanceManagerError>{
+    pub fn check_and_lock_funds(&self , order : Order)->Result<() , BalanceManagerError>{
         // currently for limit orders , we get an order 
         // we have user id , symbol , side , holfings 
         let user_index = self.get_user_index(order.user_id)?;   // fatal error , return immidieately to the function who is calling
@@ -224,6 +224,28 @@ impl MyBalanceManager{
         }
         
         Ok(())
+    }
+
+
+    pub fn run_balance_manager(&mut self){
+        loop {
+            match  self.order_receiver.recv() {
+                Ok(recieved_order)=>{
+                    match self.check_and_lock_funds(recieved_order) {
+                        Ok(_)=>{
+                            match self.order_sender.send(recieved_order)  {
+                                Ok(_)=>{} , 
+                                Err(_)=>{}
+                            }
+                        }
+                        Err(_)=>{}
+                    }
+                }
+                Err(_)=>{
+                    eprintln!("channel error");
+                }
+            } 
+        }
     }
     
 }
