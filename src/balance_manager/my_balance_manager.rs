@@ -22,6 +22,7 @@ const MAX_SYMBOLS : usize = 100 ;
 const DEFAULT_BALANCE : u64 = 10000;
 #[repr(C)]
 #[repr(align(64))]  
+#[derive(Debug)]
 pub struct UserBalance {
     pub user_id: AtomicU64,   // 8        
     pub available_balance: AtomicU64,      
@@ -42,6 +43,8 @@ impl Default for UserBalance{
             }
     }
 }
+
+#[derive(Debug)]
 pub struct UserHoldings{
     pub user_id: u64,     // 8 byte 
     pub available_holdings : [AtomicU32 ; MAX_SYMBOLS],
@@ -119,8 +122,12 @@ impl MyBalanceManager{
         // currently for limit orders , we get an order 
         // we have user id , symbol , side , holfings 
         let user_index = self.get_user_index(order.user_id)?;   // fatal error , return immidieately to the function who is calling
+        println!("user exists");
         let balance = self.get_user_balance(user_index);
+        println!("user balance ");
         let holdings = self.get_user_holdings(user_index);
+        println!("user holdings");
+        
         match order.side {
             Side::Ask =>{
                 // wants to sell 
@@ -152,6 +159,7 @@ impl MyBalanceManager{
     }
 
     pub fn update_balances_after_trade(&self, order_fills: Fills) -> Result<(), BalanceManagerError> {
+        println!("fills , recved , need to update");
         for fill in order_fills.fills {
             
             let maker_index = self.get_user_index(fill.maker_user_id)?;
@@ -229,18 +237,27 @@ impl MyBalanceManager{
         let mut last_log = std::time::Instant::now();
         loop {
             match self.fill_recv.try_recv() {
+                
                 Ok(recieved_fill)=>{
+                    println!("fills recdived , updating balances ");
                     let _ = self.update_balances_after_trade(recieved_fill);
                 },
                 Err(_)=>{
 
                 }
             }
-            
+
             match  self.order_receiver.try_recv() {
                 Ok(recieved_order)=>{
-                    println!("received order {:?}" , recieved_order);
+                    println!("received order ");
                     println!("starting to reserve funds");
+
+                    println!("\n>>> BM received: order_id={} user_id={} symbol={} qty={} price={}", 
+                        recieved_order.order_id,
+                        recieved_order.user_id, 
+                        recieved_order.symbol,
+                        recieved_order.shares_qty,
+                        recieved_order.price);
                     
                     match self.check_and_lock_funds(recieved_order) {
                         Ok(_)=>{
@@ -251,11 +268,13 @@ impl MyBalanceManager{
                             }
                             count+=1;
                         }
-                        Err(_)=>{}
+                        Err(BalanceManagerError)=>{
+                           eprint!("{:?}" , BalanceManagerError);
+                        }
                     }
                 }
                 Err(_)=>{
-                    eprintln!("channel error");
+                    //eprintln!("channel error");
                 }
             } 
             if last_log.elapsed().as_secs() >= 2 {
@@ -265,6 +284,13 @@ impl MyBalanceManager{
                 last_log = std::time::Instant::now();
             }
         }
+    }
+
+    pub fn add_test_users(&mut self ){
+        self.state.user_id_to_index.insert(10, 1);
+        self.state.user_id_to_index.insert(20, 2);
+        // user id 20  , index = 2 , symbol 0 
+        self.state.holdings[2].available_holdings[0].store(10, Ordering::Relaxed);
     }
     
 }

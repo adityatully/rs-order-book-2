@@ -5,7 +5,7 @@ use crossbeam::{channel::Sender};
 use crate::orderbook::order::{Order };
 
 pub struct ShmReader {
-    pub queue: Queue,  // Not Option!
+    pub queue: Queue,  // Not Option
     pub order_sender_to_balance_manager: Sender<Order>,
 }
 
@@ -33,7 +33,8 @@ impl ShmReader {
             match self.queue.dequeue() {
             
                 Ok(Some(shm_order)) => {
-                   
+                    println!("=== DEQUEUED order_id={} timestamp={} ===", 
+                        shm_order.order_id, shm_order.timestamp);
                     let order_side = match  shm_order.side {
                         0 => {
                             Side::Bid
@@ -45,8 +46,6 @@ impl ShmReader {
                             continue;
                         }
                     };
-                    
-                    
                     let order = Order::new(
                         shm_order.user_id,
                         shm_order.order_id,
@@ -57,11 +56,11 @@ impl ShmReader {
                         shm_order.symbol,
                     );
                     
-                    println!("order from shm , {:?}" , order);
+                    println!("order from shm recv ");
                     println!("Sending to balance manager ");
                     // send to balance manager 
                     match self.order_sender_to_balance_manager.try_send(order) {
-                        Ok(_) => {}
+                        Ok(_) => {println!("Sent to Channle")}
                         Err(e) => {
                             eprintln!("[SHM Reader] Channel full, dropping order: {:?}", e);
                         }

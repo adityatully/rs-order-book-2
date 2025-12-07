@@ -48,18 +48,20 @@ impl MyEngine{
         loop {
             match self.order_receiver.recv() {
                 Ok(mut recieved_order)=>{
-                    println!("recived order {:?}" , recieved_order);
+                    println!("recived order to engine ");
                     if let Some(order_book) = self.get_book_mut(recieved_order.symbol){
                         let events = match recieved_order.side {
                             Side::Bid => order_book.match_bid(&mut recieved_order),
                             Side::Ask => order_book.match_ask(&mut recieved_order)
                         };
-                        println!("{:?}" , events);
+                        println!("order matched events created ");
                         if let Ok(match_result)=events{
                             let _ = self.sender_to_balance_manager.send(match_result.fills.clone());
                             println!("sending fills to balance manager ");
                             let _ = self.event_publisher.send(Event::MatchResult(match_result));
+                            println!("sedning events to publisher ");
                         }
+                        count += 1;
                     }
                 }
                 Err(_)=>{

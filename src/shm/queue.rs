@@ -150,6 +150,7 @@ impl Queue {
         }
 
         let pos = (consumer_tail % QUEUE_CAPACITY as u64) as usize;
+        std::sync::atomic::fence(Ordering::Acquire);
         let order = self.get_order(pos);
 
         header

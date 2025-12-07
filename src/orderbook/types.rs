@@ -112,7 +112,7 @@ pub enum PubLishError{
 pub enum PublishSuccess{
     
 }
-
+#[derive(Debug)]
 pub enum BalanceManagerError{
     InsufficientFunds ,
     BalanceLockingFailed , 
