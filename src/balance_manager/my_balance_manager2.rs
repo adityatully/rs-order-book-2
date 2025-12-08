@@ -11,10 +11,9 @@
 // avalable means free balance or holdings that can be reserved 
 use dashmap::DashMap;
 use crossbeam::channel::{Receiver, Sender};
-//use dashmap::DashMap;
 use crate::orderbook::types::{BalanceManagerError, Fills, };
 use crate::orderbook::order::{ Order, Side};
-const MAX_USERS: usize = 100; // pre allocating for a max of 10 million users 
+const MAX_USERS: usize = 100; // pre allocating for a max of 100 users 
 const MAX_SYMBOLS : usize = 100 ; 
 const DEFAULT_BALANCE : u64 = 10000;
 #[repr(C)]
