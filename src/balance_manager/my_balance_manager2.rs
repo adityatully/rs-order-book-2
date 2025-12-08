@@ -217,7 +217,8 @@ impl MyBalanceManager2{
 
 
     pub fn run_balance_manager(&mut self){
-        eprintln!("[balance maager] Started (crossbeam batched mode) on core 6");
+        eprintln!("[balance maager] Started (crossbeam batched mode) on core 6 , the second manager ");
+
         let mut count = 0u64;
         let mut last_log = std::time::Instant::now();
         loop {
@@ -282,7 +283,7 @@ impl MyBalanceManager2{
             }
             if last_log.elapsed().as_secs() >= 2 {
                 let rate = count as f64 / last_log.elapsed().as_secs_f64();
-                eprintln!("[Balance Manager] {:.2}M orders/sec", rate / 1_000_000.0);
+                eprintln!("[Balance Manager2] {:.2}M orders/sec", rate / 1_000_000.0);
                 count = 0;
                 last_log = std::time::Instant::now();
             }
