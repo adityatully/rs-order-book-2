@@ -9,10 +9,14 @@
 // read from the SHM queue for the new order 
 // The balanaces and holdings will be in a shared state for the grpc server and the balance manager 
 // avalable means free balance or holdings that can be reserved 
+
+
+// no shared state in this approach , 
 use dashmap::DashMap;
 use crossbeam::channel::{Receiver, Sender};
 use crate::orderbook::types::{BalanceManagerError, Fills, };
 use crate::orderbook::order::{ Order, Side};
+use crate::balance_manager::types::{BalanceQuery , HoldingsQuery};
 const MAX_USERS: usize = 100; // pre allocating for a max of 100 users 
 const MAX_SYMBOLS : usize = 100 ; 
 const DEFAULT_BALANCE : u64 = 10000;
@@ -87,12 +91,14 @@ pub struct MyBalanceManager{
     pub fill_recv : crossbeam::channel::Receiver<Fills>,
     pub order_receiver : crossbeam::channel::Receiver<Order>,
     pub state : BalanceState,
+    pub balance_query_receiver: Receiver<BalanceQuery>,
+    pub holdings_query_receiver: Receiver<HoldingsQuery>,
 }
 
 impl MyBalanceManager{
-    pub fn new(order_sender : Sender<Order> , fill_recv :Receiver<Fills> , order_receiver : Receiver<Order>)->Self{
+    pub fn new(order_sender : Sender<Order> , fill_recv :Receiver<Fills> , order_receiver : Receiver<Order> , balance_query_receiver: Receiver<BalanceQuery>, holdings_query_receiver: Receiver<HoldingsQuery>)->Self{
         let balance_state = BalanceState::new();
-        Self { order_sender, fill_recv, order_receiver, state: balance_state }
+        Self { order_sender, fill_recv, order_receiver, state: balance_state , balance_query_receiver , holdings_query_receiver }
     }
     pub fn get_user_index(&self , user_id : u64 )->Result<u32 , BalanceManagerError>{
         self.state.user_id_to_index
