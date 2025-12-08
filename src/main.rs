@@ -1,5 +1,7 @@
 use std::thread::JoinHandle;
 use rust_orderbook_2::balance_manager::my_balance_manager::{ MyBalanceManager};
+use rust_orderbook_2::balance_manager::my_balance_manager2::{ MyBalanceManager2};
+use rust_orderbook_2::balance_manager::types::{BalanceQuery , HoldingsQuery};
 use rust_orderbook_2::orderbook::order::Order;
 use rust_orderbook_2::orderbook::types::Fills;
 use rust_orderbook_2::orderbook::{types::Event};
@@ -14,6 +16,9 @@ fn main(){
     let (fill_sender , fill_receiver) = crossbeam::channel::bounded::<Fills>(10000000);
     let (bm_to_engine_sender , bm_to_engine_reciver) = crossbeam::channel::bounded::<Order>(10000000);
     let (shm_to_bm_sender , shm_to_bm_receiver) = crossbeam::channel::bounded::<Order>(10000000);
+    let (_grpc_balance_query_sender , grpc_balance_query_recv)= crossbeam::channel::bounded::<BalanceQuery>(100000);
+    let (_grpc_holding_query_sender , grpc_holding_query_recv)= crossbeam::channel::bounded::<HoldingsQuery>(100000);
+    // the querysenders will be sent to the grpc serivce that will be created , for each querry a oneshott channel will be initiaised 
 
 
     // clones for passing to different parts 
@@ -25,7 +30,8 @@ fn main(){
     let bm_to_engine_reciver_clone = bm_to_engine_reciver.clone();
     let shm_to_bm_sender_clone = shm_to_bm_sender.clone();
     let shm_to_bm_receiver_clone = shm_to_bm_receiver.clone();
-
+    let grpc_balance_query_recv_clone = grpc_balance_query_recv.clone();
+    let grpc_holding_query_recv_clone =  grpc_holding_query_recv.clone();
 
     // SHM READER ONLY REQUIRES AN ORDER SENDER 
     let shm_reader_handle = std::thread::spawn(move||{
@@ -36,11 +42,19 @@ fn main(){
 
 
     // BALANCE MANAGER REQUIRES ORDER RECIVER , ORDER SENDER AND FILL RECIVER 
+    //let balance_manager_handle = std::thread::spawn(move ||{
+    //    core_affinity::set_for_current(core_affinity::CoreId { id: 6 });
+    //    let mut my_balance_manager = MyBalanceManager::new(bm_to_engine_sender_clone, fill_reciver_clone, shm_to_bm_receiver_clone);
+    //    my_balance_manager.0.add_throughput_test_users();
+    //    my_balance_manager.0.run_balance_manager();
+    //    // my_balance_manager.1 is the shared state which needs to be passed to the GRPC server for normal queries 
+    //});
+
     let balance_manager_handle = std::thread::spawn(move ||{
         core_affinity::set_for_current(core_affinity::CoreId { id: 6 });
-        let mut my_balance_manager = MyBalanceManager::new(bm_to_engine_sender_clone, fill_reciver_clone, shm_to_bm_receiver_clone);
-        my_balance_manager.0.add_throughput_test_users();
-        my_balance_manager.0.run_balance_manager();
+        let mut my_balance_manager = MyBalanceManager2::new(bm_to_engine_sender_clone, fill_reciver_clone, shm_to_bm_receiver_clone , grpc_balance_query_recv_clone , grpc_holding_query_recv_clone);
+        my_balance_manager.add_throughput_test_users();
+        my_balance_manager.run_balance_manager();
         // my_balance_manager.1 is the shared state which needs to be passed to the GRPC server for normal queries 
     });
 
@@ -74,7 +88,8 @@ fn main(){
     drop(bm_to_engine_sender);
     drop(shm_to_bm_receiver);
     drop(shm_to_bm_sender);
-
+    drop(grpc_balance_query_recv);
+    drop(grpc_holding_query_recv);
 
     // AWAITING THE MAIN THREAD FOR INFINITE TIME UNTILL ALL THESE THREADS JOIN 
     for handle in running_engines {

@@ -232,7 +232,7 @@ impl MyBalanceManager{
 
 
     pub fn run_balance_manager(&mut self){
-        eprintln!("[PUBLISHER] Started (crossbeam batched mode) on core 6");
+        eprintln!("[balance manager ] Started (crossbeam batched mode) on core 6");
         let mut count = 0u64;
         let mut last_log = std::time::Instant::now();
         loop {

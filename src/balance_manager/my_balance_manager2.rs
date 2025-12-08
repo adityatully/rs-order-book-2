@@ -86,7 +86,7 @@ impl Default for BalanceState {
         Self::new()
     }
 }
-pub struct MyBalanceManager{
+pub struct MyBalanceManager2{
     pub order_sender : crossbeam::channel::Sender<Order>,
     pub fill_recv : crossbeam::channel::Receiver<Fills>,
     pub order_receiver : crossbeam::channel::Receiver<Order>,
@@ -95,7 +95,7 @@ pub struct MyBalanceManager{
     pub holdings_query_receiver: Receiver<HoldingsQuery>,
 }
 
-impl MyBalanceManager{
+impl MyBalanceManager2{
     pub fn new(order_sender : Sender<Order> , fill_recv :Receiver<Fills> , order_receiver : Receiver<Order> , balance_query_receiver: Receiver<BalanceQuery>, holdings_query_receiver: Receiver<HoldingsQuery>)->Self{
         let balance_state = BalanceState::new();
         Self { order_sender, fill_recv, order_receiver, state: balance_state , balance_query_receiver , holdings_query_receiver }
@@ -217,7 +217,7 @@ impl MyBalanceManager{
 
 
     pub fn run_balance_manager(&mut self){
-        eprintln!("[PUBLISHER] Started (crossbeam batched mode) on core 6");
+        eprintln!("[balance maager] Started (crossbeam batched mode) on core 6");
         let mut count = 0u64;
         let mut last_log = std::time::Instant::now();
         loop {
@@ -262,6 +262,24 @@ impl MyBalanceManager{
                     //eprintln!("channel error");
                 }
             } 
+
+            match self.balance_query_receiver.try_recv() {
+                Ok(_)=>{
+                    // call the grpc qury handler , will take in a balance query and will repond though the one shot channel created iside the query 
+                },
+                Err(_)=>{
+
+                }
+            }
+
+            match self.holdings_query_receiver.try_recv() {
+                Ok(_)=>{
+                    // call the grpc qury handler , will take in a holding query and will repond though the one shot channel created iside the query 
+                },
+                Err(_)=>{
+
+                }
+            }
             if last_log.elapsed().as_secs() >= 2 {
                 let rate = count as f64 / last_log.elapsed().as_secs_f64();
                 eprintln!("[Balance Manager] {:.2}M orders/sec", rate / 1_000_000.0);
