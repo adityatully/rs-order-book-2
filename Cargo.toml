@@ -20,12 +20,23 @@ dashmap = "6.1.0"
 rustc-hash = { version = "2.1" }
 tonic = "0.14.2"
 prost = "0.14.1"
+hotpath = "0.8"
 
 
 [[bin]]
 name = "producer"
 path = "src/bin/producer.rs"
 
+[[bin]]
+name = "single_threaded_consumer"
+path = "src/bin/single_threaded_consumer.rs"
+
 
 [build-dependencies]
 tonic-build = "0.11" 
+
+
+[features]
+hotpath = ["hotpath/hotpath"]
+hotpath-alloc = ["hotpath/hotpath-alloc"]
+hotpath-off = ["hotpath/hotpath-off"]

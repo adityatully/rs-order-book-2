@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::orderbook::order::{Order, Side};
-use crate::orderbook::types::{Event, Fills} ;
+use crate::orderbook::types::{Event, Fills, MatchResult} ;
 use crate::orderbook::order_book::OrderBook;
 use crate::shm::queue::Queue;
 use crossbeam::channel::{Sender , Receiver};
@@ -40,12 +40,14 @@ impl MyEngine{
             } 
             
     }
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn run_engine(&mut self ){
         eprintln!("[ENGINE] Started (crossbeam batched mode) on core 1");
 
         let mut count = 0u64;
         let mut last_log = std::time::Instant::now();
         loop {
+            
             match self.order_receiver.recv() {
                 Ok(mut recieved_order)=>{
                     //println!("recived order to engine ");
@@ -111,3 +113,65 @@ impl Engine for MyEngine{
 }
 
 
+pub struct STEngine{
+    pub engine_id :usize ,
+    pub book_count : usize, 
+    pub books : HashMap<u32 , OrderBook>,
+}
+
+impl STEngine{
+    pub fn new( engine_id : usize )->Self {
+        // initialise the publisher channel here 
+        
+            Self{
+                engine_id,
+                book_count : 0 ,
+                books : HashMap::new(),
+                
+            } 
+            
+    }
+    #[inline(always)]
+    pub fn process_order(&mut self , mut recieved_order : Order)->Option<MatchResult>{
+        
+        if let Some(order_book) = self.get_book_mut(recieved_order.symbol){
+            let events = match recieved_order.side {
+                Side::Bid => order_book.match_bid(&mut recieved_order),
+                Side::Ask => order_book.match_ask(&mut recieved_order)
+            };
+            return events.ok();
+           // println!("order matched events created ")
+        }
+        None
+    }
+}
+
+impl Engine for STEngine{
+    fn add_book(&mut self , symbol : u32) {
+        let new_book = OrderBook::new(symbol);
+        self.books.insert(symbol, new_book);
+        self.book_count = self.book_count.saturating_add(1);
+    }
+    fn get_book(&self , symbol : u32)->Option<&OrderBook> {
+       self.books.get(&symbol).map(|orderbook| orderbook)
+    }
+    fn get_book_mut(&mut self, symbol: u32) -> Option<&mut OrderBook> {
+        self.books.get_mut(&symbol)
+    }
+    fn get_book_count(&self)->usize {
+        self.book_count
+    }
+    fn has_book(&self, symbol: u32) -> bool {
+        self.books.contains_key(&symbol)
+    }
+
+    // cleaning up logic reqd 
+    fn remove_book(&mut self , symbol : u32) {
+        if self.books.contains_key(&symbol){
+            self.books.remove(&symbol);
+            self.book_count = self.book_count.saturating_sub(1);
+        }
+    }
+    
+
+}

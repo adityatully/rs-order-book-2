@@ -117,7 +117,7 @@ impl OrderBook{
         }) 
     }
 
-
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn match_bid(&mut self , order: &mut Order)->Result<MatchResult , OrderBookError>{
        // println!("recived the order , matching now");
         
@@ -220,7 +220,7 @@ impl OrderBook{
             order_id : order.order_id , fills , remaining_qty : order.shares_qty
         })
     }
-
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn match_ask(&mut self , order: &mut Order)->Result<MatchResult , OrderBookError>{
        // println!("recived the order , matching now");
         let mut fills = Fills::new();

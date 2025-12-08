@@ -114,6 +114,7 @@ impl MyBalanceManager2{
     }
     
     //// returned the state so that it can be passed to the grpc server 
+     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn check_and_lock_funds(&mut self , order : Order)->Result<() , BalanceManagerError>{
         // currently for limit orders , we get an order 
         // we have user id , symbol , side , holfings 
@@ -154,7 +155,7 @@ impl MyBalanceManager2{
         }
         Ok(())
     }
-
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn update_balances_after_trade(&mut self, order_fills: Fills) -> Result<(), BalanceManagerError> {
         //println!("fills , recved , need to update");
         for fill in order_fills.fills {
@@ -215,26 +216,37 @@ impl MyBalanceManager2{
         Ok(())
     }
 
-
+    #[hotpath::measure]
     pub fn run_balance_manager(&mut self){
         eprintln!("[balance maager] Started (crossbeam batched mode) on core 6 , the second manager ");
 
         let mut count = 0u64;
         let mut last_log = std::time::Instant::now();
+        let mut channel_recv_time = std::time::Duration::ZERO;
+        let mut channel_send_time = std::time::Duration::ZERO;
+        let mut lock_funds_time = std::time::Duration::ZERO;
+        let mut update_balance_time = std::time::Duration::ZERO;
+        let mut idle_time = std::time::Duration::ZERO;
         loop {
+
+            let fill_start = std::time::Instant::now();
             match self.fill_recv.try_recv() {
                 
                 Ok(recieved_fill)=>{
+                    channel_recv_time += fill_start.elapsed();
+                    let update_start = std::time::Instant::now();
                     //println!("fills recdived , updating balances ");
                     let _ = self.update_balances_after_trade(recieved_fill);
+                    update_balance_time += update_start.elapsed();
                 },
                 Err(_)=>{
 
                 }
             }
-
+            let recv_start = std::time::Instant::now();
             match  self.order_receiver.try_recv() {
                 Ok(recieved_order)=>{
+                    channel_recv_time += recv_start.elapsed();
                     //println!("received order ");
                     //println!("starting to reserve funds");
 //
@@ -244,12 +256,14 @@ impl MyBalanceManager2{
                     //    recieved_order.symbol,
                     //    recieved_order.shares_qty,
                     //    recieved_order.price);
-                    
+                    let lock_start = std::time::Instant::now();
                     match self.check_and_lock_funds(recieved_order) {
                         Ok(_)=>{
+                            lock_funds_time += lock_start.elapsed();
                             //println!("sendint to engine");
+                            let send_start = std::time::Instant::now();
                             match self.order_sender.send(recieved_order)  {
-                                Ok(_)=>{} , 
+                                Ok(_)=>{ channel_send_time += send_start.elapsed();} , 
                                 Err(_)=>{}
                             }
                             count+=1;
@@ -282,9 +296,34 @@ impl MyBalanceManager2{
                 }
             }
             if last_log.elapsed().as_secs() >= 2 {
-                let rate = count as f64 / last_log.elapsed().as_secs_f64();
-                eprintln!("[Balance Manager2] {:.2}M orders/sec", rate / 1_000_000.0);
+                let total_time = last_log.elapsed();
+                let rate = count as f64 / total_time.as_secs_f64();
+                
+                eprintln!("\n[Balance Manager2] Performance Report:");
+                eprintln!("  Throughput:     {:.2}M orders/sec", rate / 1_000_000.0);
+                eprintln!("  Channel recv:   {:.1}% ({:.3}s)", 
+                    channel_recv_time.as_secs_f64() / total_time.as_secs_f64() * 100.0,
+                    channel_recv_time.as_secs_f64());
+                eprintln!("  Channel send:   {:.1}% ({:.3}s)", 
+                    channel_send_time.as_secs_f64() / total_time.as_secs_f64() * 100.0,
+                    channel_send_time.as_secs_f64());
+                eprintln!("  Lock funds:     {:.1}% ({:.3}s)", 
+                    lock_funds_time.as_secs_f64() / total_time.as_secs_f64() * 100.0,
+                    lock_funds_time.as_secs_f64());
+                eprintln!("  Update balance: {:.1}% ({:.3}s)", 
+                    update_balance_time.as_secs_f64() / total_time.as_secs_f64() * 100.0,
+                    update_balance_time.as_secs_f64());
+                eprintln!("  Idle time:      {:.1}% ({:.3}s)", 
+                    idle_time.as_secs_f64() / total_time.as_secs_f64() * 100.0,
+                    idle_time.as_secs_f64());
+                
+                // Reset counters
                 count = 0;
+                channel_recv_time = std::time::Duration::ZERO;
+                channel_send_time = std::time::Duration::ZERO;
+                lock_funds_time = std::time::Duration::ZERO;
+                update_balance_time = std::time::Duration::ZERO;
+                idle_time = std::time::Duration::ZERO;
                 last_log = std::time::Instant::now();
             }
         }
@@ -331,4 +370,163 @@ impl MyBalanceManager2{
     }
     
     
+}
+
+
+
+pub struct STbalanceManager{
+    state : BalanceState
+}
+
+impl STbalanceManager{
+    pub fn new()->Self{
+        let balance_state = BalanceState::new();
+        Self {  state: balance_state  }
+    }
+    pub fn get_user_index(&self , user_id : u64 )->Result<u32 , BalanceManagerError>{
+        self.state.user_id_to_index
+        .get(&user_id).map(|index| *index)
+        .ok_or(BalanceManagerError::UserNotFound)
+    }
+    // taking mutable refrences to the balance manager 
+    pub fn get_user_balance(&mut self , user_index : u32 )->&mut UserBalance{
+        &mut self.state.balances[user_index as usize]
+    }
+    pub fn get_user_holdings(&mut self , user_index : u32)->&mut UserHoldings{
+        &mut self.state.holdings[user_index as usize]
+    }
+    pub fn check_and_lock_funds(&mut self , order : Order)->Result<() , BalanceManagerError>{
+        // currently for limit orders , we get an order 
+        // we have user id , symbol , side , holfings 
+        let user_index = self.get_user_index(order.user_id)?;   // fatal error , return immidieately to the function who is calling
+        //println!("user exists");
+        //println!("user balance ");
+        //println!("user holdings");
+        
+        match order.side {
+            Side::Ask =>{
+                let holdings = self.get_user_holdings(user_index);
+                // wants to sell 
+                let avalable_holdings_for_symbol = holdings.available_holdings[order.symbol as usize];
+                let reserved_holdings_for_symbol = holdings.reserved_holdings[order.symbol as usize];
+
+                if order.shares_qty > avalable_holdings_for_symbol{
+                    return Err(BalanceManagerError::InsufficientFunds);
+                }
+                
+                holdings.available_holdings[order.symbol as usize] = avalable_holdings_for_symbol - order.shares_qty;
+                holdings.reserved_holdings[order.symbol as usize] = reserved_holdings_for_symbol + order.shares_qty;
+            }
+            Side::Bid =>{
+                // wants to buy  , if balacne > price * qty , we can rserve 
+                // avalable is the free balance right now and reserved is what is alr reserved 
+                let balance = self.get_user_balance(user_index);
+                let required_balance = order.price*order.shares_qty as u64;
+                let avalaible_balance = balance.available_balance;
+                let reserved_balance = balance.reserved_balance;
+
+                if required_balance > avalaible_balance {
+                    return Err(BalanceManagerError::InsufficientFunds);
+                }
+                // we can reserv and and pass on the order to the matching egnine 
+                balance.available_balance = avalaible_balance - required_balance;
+                balance.reserved_balance = reserved_balance+required_balance;   
+            }
+        }
+        Ok(())
+    }
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
+    pub fn update_balances_after_trade(&mut self, order_fills: Fills) -> Result<(), BalanceManagerError> {
+        //println!("fills , recved , need to update");
+        for fill in order_fills.fills {
+            
+            let maker_index = self.get_user_index(fill.maker_user_id)?;
+            let taker_index = self.get_user_index(fill.taker_user_id)?;
+            let fill_value = fill.price * fill.quantity as u64;
+            
+            match fill.taker_side {
+                Side::Ask => {
+                    // Taker is selling , jo order aya was sell order , order book pe(maker) buy order 
+                    // add money , he sold 
+
+                    {let  taker_balance = self.get_user_balance(taker_index);
+                    let taker_avail_bal = taker_balance.available_balance;
+                    taker_balance.available_balance = taker_avail_bal + fill_value;}
+                    
+                    // remove holdings from resevred
+                    {let  taker_holdings = self.get_user_holdings(taker_index);
+                    let taker_reserved_holdings = taker_holdings.reserved_holdings[fill.symbol as usize];
+                    taker_holdings.reserved_holdings[fill.symbol as usize] = taker_reserved_holdings - fill.quantity;}
+                    
+                    {let  maker_balance = self.get_user_balance(maker_index);
+                    let maker_reserved_bal = maker_balance.reserved_balance;
+                    maker_balance.reserved_balance= maker_reserved_bal - fill_value;}
+                    
+                    // add shares , he bough 
+                    {let  maker_holdings = self.get_user_holdings(maker_index);
+                    let maker_avail_holdings = maker_holdings.available_holdings[fill.symbol as usize];
+                    maker_holdings.available_holdings[fill.symbol as usize]= maker_avail_holdings + fill.quantity}
+                        
+                }
+                
+                Side::Bid => {
+                    // Taker is buying , incoming is a buying order 
+
+                   { let  taker_balance = self.get_user_balance(taker_index);
+                    let taker_reserved_bal = taker_balance.reserved_balance;
+                    taker_balance.reserved_balance= taker_reserved_bal - fill_value;}
+                        
+                    
+                    {let  taker_holdings = self.get_user_holdings(taker_index);
+                    let taker_avail_holdings = taker_holdings.available_holdings[fill.symbol as usize];
+                    taker_holdings.available_holdings[fill.symbol as usize]= taker_avail_holdings + fill.quantity;}
+                    
+                    {let  maker_balance = self.get_user_balance(maker_index);
+                    let maker_avail_bal = maker_balance.available_balance;
+                    maker_balance.available_balance= maker_avail_bal + fill_value;}
+    
+                    
+                    {let  maker_holdings = self.get_user_holdings(maker_index);
+                    let maker_reserved_holdings = maker_holdings.reserved_holdings[fill.symbol as usize];
+                    maker_holdings.reserved_holdings[fill.symbol as usize]= maker_reserved_holdings - fill.quantity;}
+                }
+            }
+        }
+        
+        Ok(())
+    }
+
+    pub fn add_throughput_test_users(&mut self) {
+        const HIGH_BALANCE: u64 = 100_000_000_000;
+        const HIGH_HOLDINGS: u32 = 1_000_000_000;
+        
+        eprintln!("[BM]  INITIALIZING THROUGHPUT USERS...");
+        
+        // Add user 10 (buyer)
+        self.state.user_id_to_index.insert(10, 1);
+        self.state.balances[1].user_id =10;
+        self.state.balances[1].available_balance= HIGH_BALANCE;
+        
+        // Add user 20 (seller)
+        self.state.user_id_to_index.insert(20, 2);
+        self.state.balances[2].user_id=20;
+        self.state.balances[2].available_balance = HIGH_BALANCE;
+        
+        // Give seller holdings for symbol 0
+        for symbol in 0..MAX_SYMBOLS {
+            self.state.holdings[2].available_holdings[symbol] = HIGH_HOLDINGS;
+        }
+        
+        // ✅ VERIFY INITIALIZATION
+        let user10_bal = self.state.balances[1].available_balance;
+        let user20_bal = self.state.balances[2].available_balance;
+        let user20_holdings = self.state.holdings[2].available_holdings[0];
+        
+        eprintln!("[BM] User 10 balance: {}", user10_bal);
+        eprintln!("[BM] User 20 balance: {}", user20_bal);
+        eprintln!("[BM] User 20 holdings[0]: {}", user20_holdings);
+        eprintln!("[BM] User map contains 10: {}", self.state.user_id_to_index.contains_key(&10));
+        eprintln!("[BM] User map contains 20: {}", self.state.user_id_to_index.contains_key(&20));
+    }
+
 }

@@ -10,8 +10,9 @@ use rust_orderbook_2::publisher::event_publisher::EventPublisher;
 use core_affinity;
 use rust_orderbook_2::shm::reader::ShmReader;
 
-fn main(){
 
+#[hotpath::main]
+fn main(){
     let (event_sender , event_rec) = crossbeam::channel::bounded::<Event>(10000000);
     let (fill_sender , fill_receiver) = crossbeam::channel::bounded::<Fills>(10000000);
     let (bm_to_engine_sender , bm_to_engine_reciver) = crossbeam::channel::bounded::<Order>(10000000);

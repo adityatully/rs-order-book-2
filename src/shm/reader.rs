@@ -1,8 +1,12 @@
+
+
+use crate::shm::queue::QueueError;
 // SHM reader , passed ordrs to the balance manager 
-use crate::shm::queue::Queue;
+use crate::{orderbook::order::ShmOrder, shm::queue::Queue};
 use crate::orderbook::order::Side;
 use crossbeam::{channel::Sender};
 use crate::orderbook::order::{Order };
+use crate::orderbook::types::{ShmReaderError};
 
 pub struct ShmReader {
     pub queue: Queue,  // Not Option
@@ -20,7 +24,7 @@ impl ShmReader {
             }
         }
     }
-    
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn run_reader(&mut self) {
         eprintln!("[SHM Reader] Starting on Core 2");
         
@@ -59,6 +63,7 @@ impl ShmReader {
                     //println!("order from shm recv ");
                     //println!("Sending to balance manager ");
                     // send to balance manager 
+
                     match self.order_sender_to_balance_manager.send(order) {
                         Ok(_) => {}
                         Err(e) => {
@@ -88,3 +93,64 @@ impl ShmReader {
     }
 }
 
+
+pub struct StShmReader{
+    pub queue: Queue,
+}
+
+impl StShmReader{
+    pub fn new() -> Option<Self> {
+        match Queue::open("/tmp/sex") {
+            Ok(queue) => Some(Self { queue }),
+            Err(e) => {
+                eprintln!("[SHM Reader] Failed to open queue: {:?}", e);
+                None
+            }
+        }
+    }
+    #[inline(always)]
+    pub fn receive_order(&mut self)->Option<Order>{
+        match self.queue.dequeue() {
+            
+            Ok(Some(shm_order)) => {
+
+
+                let order_side = match  shm_order.side {
+                    0 => {
+                        Side::Bid
+                    },
+                    1=>{
+                        Side::Ask
+                    }
+                    _=>{
+                        return None;
+                    }
+                    
+                };
+                let order = Order::new(
+                    shm_order.user_id,
+                    shm_order.order_id,
+                    order_side,
+                    shm_order.shares_qty,
+                    shm_order.price,
+                    shm_order.timestamp,
+                    shm_order.symbol,
+                );
+                return Some(order);
+                //println!("order from shm recv ");
+                //println!("Sending to balance manager ");
+                // send to balance manager 
+
+                
+            }
+            Ok(None)=>{
+                
+            }
+            Err(e) => {
+                return  None;
+            }
+        }
+
+        None
+    }
+}
