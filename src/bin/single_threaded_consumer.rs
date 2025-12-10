@@ -1,9 +1,6 @@
 // src/bin/single_threaded.rs
 use rust_orderbook_2::{
-    balance_manager::my_balance_manager2::{STbalanceManager},
-    engine::my_engine::{Engine, STEngine},
-    shm::reader::{StShmReader},
-    orderbook::types::MatchResult,
+    balance_manager::my_balance_manager2::STbalanceManager, engine::my_engine::{Engine, STEngine}, orderbook::{order::Order, types::MatchResult}, shm::reader::StShmReader
 };
 use std::time::Instant;
 
@@ -15,6 +12,7 @@ pub struct TradingCore {
     // ✅ Performance tracking
     processed_count: u64,
     last_log: Instant,
+    order_batch : Vec<Order>
 }
 
 impl TradingCore {
@@ -25,6 +23,7 @@ impl TradingCore {
             engine: STEngine::new(0),
             processed_count: 0,
             last_log: Instant::now(),
+            order_batch : Vec::with_capacity(1000)
         }
     }
 
@@ -32,9 +31,16 @@ impl TradingCore {
         eprintln!("[Trading Core] Starting single-threaded mode");
         
         loop {
-  
-            if let Some(order) = self.shm_reader.receive_order() {
-                // Check and lock funds
+            self.order_batch.clear();
+            for _ in 0 ..1000{
+                if let Some(order) = self.shm_reader.receive_order() {
+                    self.order_batch.push(order);                    
+                }
+                else {
+                    break;
+                }
+            }
+            for order in self.order_batch.drain(..){
                 match self.balance_manager.check_and_lock_funds(order) {
                     Ok(_) => {
                         // Process order in engine
@@ -60,7 +66,6 @@ impl TradingCore {
                     }
                 }
             }
-            
             // ✅ Log throughput every 2 seconds
             if self.last_log.elapsed().as_secs() >= 2 {
                 let elapsed = self.last_log.elapsed();
@@ -88,3 +93,6 @@ fn main() {
     eprintln!("[Main] Initialization complete, starting trading loop");
     trading_system.run();
 }
+
+
+

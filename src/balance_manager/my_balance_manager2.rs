@@ -437,7 +437,6 @@ impl STbalanceManager{
     }
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn update_balances_after_trade(&mut self, order_fills: Fills) -> Result<(), BalanceManagerError> {
-        //println!("fills , recved , need to update");
         for fill in order_fills.fills {
             
             let maker_index = self.get_user_index(fill.maker_user_id)?;
