@@ -2,6 +2,8 @@ use std::sync::Arc;
 use crate::orderbook::order::Side;
 pub type OrderId = u64;
 use thiserror::Error;
+use serde::{Serialize, Deserialize };
+
 #[derive(Debug , Clone , Copy)]
 pub struct Fill{
     pub price : u64 , 
@@ -102,6 +104,9 @@ pub enum OrderBookError{
     // aff errors that can occour 
 }
 #[derive(Debug)]
+
+
+
 pub enum Event {
     PriceLevelChangedEvent(PriceLevelChangedEvent) ,
     MatchResult(MatchResult)
@@ -131,8 +136,91 @@ pub struct BalanceInfo{
 pub enum ShmReaderError{
     QueueError
 }
-
+#[derive(Debug )]
 pub enum QueueError{
     QueueFullError , 
     QueueEmptyError
+}
+
+pub struct MarketDataUpdate{
+    pub ticker_data : TickerData , 
+    pub depth_data : DepthData ,
+    pub trade_data : TradeData , 
+}
+
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TickerData {
+    #[serde(rename = "e")]
+    pub event: String, // "ticker"
+
+    #[serde(rename = "s")]
+    pub symbol: String,
+
+    #[serde(rename = "E")]
+    pub event_time: i64,
+
+    #[serde(rename = "p")]
+    pub price: String,
+}
+
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DepthData{
+    #[serde(rename = "e")]
+    pub event: String,         
+
+    #[serde(rename = "s")]
+    pub symbol: String,
+
+    #[serde(rename = "E")]
+    pub event_time: i64,
+
+    #[serde(rename = "T")]
+    pub trade_time: i64,
+
+    #[serde(rename = "U")]
+    pub first_id: i64,
+
+    #[serde(rename = "u")]
+    pub last_id: i64,
+
+    #[serde(rename = "b")]
+    pub bids: Vec<[String; 2]>,  
+
+    #[serde(rename = "a")]
+    pub asks: Vec<[String; 2]>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TradeData {
+    #[serde(rename = "e")]
+    pub event: String,
+
+    #[serde(rename = "s")]
+    pub symbol: String,
+
+    #[serde(rename = "E")]
+    pub event_time: i64,
+
+    #[serde(rename = "T")]
+    pub trade_time: i64,
+
+    #[serde(rename = "t")]
+    pub trade_id: i64,
+
+    #[serde(rename = "p")]
+    pub price: String,
+
+    #[serde(rename = "q")]
+    pub quantity: String,
+
+    #[serde(rename = "a")]
+    pub buyer_order_id: String,
+
+    #[serde(rename = "b")]
+    pub seller_order_id: String,
+
+    #[serde(rename = "m")]
+    pub is_buyer_maker: bool,
 }

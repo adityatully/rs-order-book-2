@@ -51,6 +51,11 @@ impl<T> SpscQueue<T> {
         self.capacity
     }
 
+    pub fn is_empty(&self)->bool{
+        let p = self.producer_index.load(Ordering::Acquire);
+        let c = self.consumer_index.load(Ordering::Relaxed);
+        c==p
+    }
    
     pub fn push(&self, data: T) -> Result<(), QueueError> {
        

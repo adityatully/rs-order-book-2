@@ -1,12 +1,14 @@
 use crossbeam::{channel::Receiver, queue::ArrayQueue};
 use crate::orderbook::types::Event;
 use std::sync::Arc;
+use crate::singlepsinglecq::my_queue::SpscQueue;
+
 pub struct EventPublisher {
     pub receiver: Receiver<Event>,   
-    pub event_queue : Arc<ArrayQueue<Event>>
+    pub event_queue : Arc<SpscQueue<Event>>
 }
 impl EventPublisher {
-    pub fn new(rx: Receiver<Event> , event_queue : Arc<ArrayQueue<Event>>) -> Self {
+    pub fn new(rx: Receiver<Event> , event_queue : Arc<SpscQueue<Event>>) -> Self {
         Self { receiver: rx , event_queue }
     }
     pub fn start_publisher(&mut self) {

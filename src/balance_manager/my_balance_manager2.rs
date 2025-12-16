@@ -19,6 +19,7 @@ use crossbeam::channel::{Receiver, Sender};
 use crate::orderbook::types::{BalanceManagerError, Fills, };
 use crate::orderbook::order::{ Order, Side};
 use crate::balance_manager::types::{BalanceQuery , HoldingsQuery};
+use crate::singlepsinglecq::my_queue::SpscQueue;
 const MAX_USERS: usize = 100; // pre allocating for a max of 100 users 
 const MAX_SYMBOLS : usize = 100 ; 
 const DEFAULT_BALANCE : u64 = 10000;
@@ -92,13 +93,13 @@ pub struct MyBalanceManager2{
     pub state : BalanceState,
     pub balance_query_receiver: Receiver<BalanceQuery>,
     pub holdings_query_receiver: Receiver<HoldingsQuery>,
-    pub fill_queue : Arc<ArrayQueue<Fills>>,
-    pub shm_bm_order_queue : Arc<ArrayQueue<Order>>,
-    pub bm_engine_order_queue : Arc<ArrayQueue<Order>>
+    pub fill_queue : Arc<SpscQueue<Fills>>,
+    pub shm_bm_order_queue : Arc<SpscQueue<Order>>,
+    pub bm_engine_order_queue : Arc<SpscQueue<Order>>
 }
 
 impl MyBalanceManager2{
-    pub fn new(order_sender : Sender<Order> , fill_recv :Receiver<Fills> , order_receiver : Receiver<Order> , balance_query_receiver: Receiver<BalanceQuery>, holdings_query_receiver: Receiver<HoldingsQuery> , fill_queue : Arc<ArrayQueue<Fills>>,shm_bm_order_queue : Arc<ArrayQueue<Order>>,bm_engine_order_queue : Arc<ArrayQueue<Order>>)->Self{
+    pub fn new(order_sender : Sender<Order> , fill_recv :Receiver<Fills> , order_receiver : Receiver<Order> , balance_query_receiver: Receiver<BalanceQuery>, holdings_query_receiver: Receiver<HoldingsQuery> , fill_queue : Arc<SpscQueue<Fills>>,shm_bm_order_queue : Arc<SpscQueue<Order>>,bm_engine_order_queue : Arc<SpscQueue<Order>>)->Self{
         let balance_state = BalanceState::new();
         Self { order_sender, fill_recv, order_receiver, state: balance_state , balance_query_receiver , holdings_query_receiver
         ,fill_queue , shm_bm_order_queue , bm_engine_order_queue }
@@ -222,7 +223,7 @@ impl MyBalanceManager2{
     #[hotpath::measure]
     #[hotpath::measure]
 pub fn run_balance_manager(&mut self) {
-    const BATCH_ORDERS: usize = 64;
+    const BATCH_ORDERS: usize = 1000;
 
     eprintln!("[balance manager] Started on core (batched, prioritized fills)"); 
 

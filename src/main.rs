@@ -10,14 +10,15 @@ use rust_orderbook_2::engine::my_engine::{ Engine, MyEngine};
 use rust_orderbook_2::publisher::event_publisher::EventPublisher;
 use core_affinity;
 use rust_orderbook_2::shm::reader::ShmReader;
+use rust_orderbook_2::singlepsinglecq::my_queue::SpscQueue;
 use crossbeam::queue::ArrayQueue;
 
 #[hotpath::main]
 fn main(){
-    let fill_queue = Arc::new(ArrayQueue::<Fills>::new(100000000));
-    let event_queue = Arc::new(ArrayQueue::<Event>::new(32768));
-    let bm_engine_order_queue = Arc::new(ArrayQueue::<Order>::new(32768));
-    let shm_bm_order_queue = Arc::new(ArrayQueue::<Order>::new(32768));
+    let fill_queue = Arc::new(SpscQueue::<Fills>::new(32768));
+    let event_queue = Arc::new(SpscQueue::<Event>::new(32768));
+    let bm_engine_order_queue = Arc::new(SpscQueue::<Order>::new(32768));
+    let shm_bm_order_queue = Arc::new(SpscQueue::<Order>::new(32768));
 
 
 

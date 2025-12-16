@@ -6,6 +6,8 @@ use crate::shm::queue::Queue;
 use crossbeam::channel::{Sender , Receiver};
 use crossbeam::queue::ArrayQueue;
 use std::sync::Arc;
+use crate::singlepsinglecq::my_queue::SpscQueue;
+
 
 pub trait Engine{
     fn add_book(&mut self , symbol : u32);
@@ -25,13 +27,13 @@ pub struct MyEngine{
     pub test_orderbook : OrderBook,
     pub sender_to_balance_manager : Sender<Fills>,
     pub order_receiver :Receiver<Order>,
-    pub bm_engine_order_queue : Arc<ArrayQueue<Order>>,
-    pub fill_queue : Arc<ArrayQueue<Fills>>,
-    pub event_queue : Arc<ArrayQueue<Event>>
+    pub bm_engine_order_queue : Arc<SpscQueue<Order>>,
+    pub fill_queue : Arc<SpscQueue<Fills>>,
+    pub event_queue : Arc<SpscQueue<Event>>
 }
 
 impl MyEngine{
-    pub fn new(event_publisher : Sender<Event>, engine_id : usize , sender_to_balance_manager: Sender<Fills> , order_receiver :Receiver<Order> , bm_engine_order_queue : Arc<ArrayQueue<Order>>, fill_queue : Arc<ArrayQueue<Fills>>,event_queue : Arc<ArrayQueue<Event>>)->Self {
+    pub fn new(event_publisher : Sender<Event>, engine_id : usize , sender_to_balance_manager: Sender<Fills> , order_receiver :Receiver<Order> , bm_engine_order_queue : Arc<SpscQueue<Order>>, fill_queue : Arc<SpscQueue<Fills>>,event_queue : Arc<SpscQueue<Event>>)->Self {
         // initialise the publisher channel here 
         
             Self{

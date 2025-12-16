@@ -8,17 +8,18 @@ use crossbeam::queue::ArrayQueue;
 use crossbeam::{channel::Sender};
 use crate::orderbook::order::{Order };
 use crate::orderbook::types::{ShmReaderError};
+use crate::singlepsinglecq::my_queue::SpscQueue;
 
 pub struct ShmReader {
     pub queue: Queue,  // Not Option
     pub order_sender_to_balance_manager: Sender<Order>,
-    pub shm_bm_order_queue : Arc<ArrayQueue<Order>>,
+    pub shm_bm_order_queue : Arc<SpscQueue<Order>>,
     pub order_batch : Vec<ShmOrder>
 }
 
 impl ShmReader {
     /// Returns None if queue can't be opened
-    pub fn new(order_sender_to_balance_manager: Sender<Order> , shm_bm_order_queue : Arc<ArrayQueue<Order>>) -> Option<Self> {
+    pub fn new(order_sender_to_balance_manager: Sender<Order> , shm_bm_order_queue : Arc<SpscQueue<Order>>) -> Option<Self> {
         match Queue::open("/tmp/sex") {
             Ok(queue) => Some(Self { queue, order_sender_to_balance_manager , shm_bm_order_queue  , order_batch : Vec::with_capacity(1000)}),
             Err(e) => {

@@ -13,7 +13,8 @@ pub struct OrderBook{
     pub bidside : BookSide,
     pub last_trade_price : AtomicU64,
     pub manager : OrderManager,
-    pub fill_buffer : Vec<Fill>
+    pub fill_buffer : Vec<Fill>,
+
 }
 
 impl OrderBook{
@@ -25,6 +26,7 @@ impl OrderBook{
             last_trade_price: AtomicU64::new(0),
             manager : OrderManager::new(),
             fill_buffer : Vec::with_capacity(50),
+
         }
     }
 
@@ -198,6 +200,7 @@ impl OrderBook{
         }
         if order.shares_qty > 0 {
             // this will go into the order book , owner ship transfered 
+            // this bid order goes into the order book 
             let remaining_order = Order{
                 user_id : order.user_id,
                 order_id : order.order_id , 
@@ -379,5 +382,7 @@ impl OrderBook{
             }
        }
     }
+
+    
 }
 
