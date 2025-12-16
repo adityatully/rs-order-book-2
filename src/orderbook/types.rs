@@ -1,8 +1,9 @@
 use std::sync::Arc;
-use crate::orderbook::order::Side;
+use crate::{orderbook::order::Side, publisher::event_publisher::EventPublisher};
 pub type OrderId = u64;
 use thiserror::Error;
 use serde::{Serialize, Deserialize };
+
 
 #[derive(Debug , Clone , Copy)]
 pub struct Fill{
@@ -71,46 +72,12 @@ impl MatchResult{
        self.fills.add(fill);
     }
 }
-#[derive(Debug)]
-pub struct TradeResult {
-    pub symbol : String ,
-    pub match_result : MatchResult
-}
-
-impl TradeResult{
-    pub fn new(symbol : String , match_result : MatchResult)->Self{
-        Self { symbol, match_result }
-    }
-}
-
-//pub type TradeListener = Arc<dyn Fn(&TradeResult) + Send + Sync>;
-pub type TradeListener = Arc<dyn Fn(TradeResult) + Send + Sync>;
-
-
-#[derive(Debug)]
-pub struct PriceLevelChangedEvent{
-    pub side : Side  ,
-    pub quantity : u64 , 
-    pub price : u64,
-}
-
-pub type PriceLevelChangedEventListener = Arc<dyn Fn(PriceLevelChangedEvent) + Send+Sync>;
-
-// dyn Fn() means any type which taken in a PricelevelChangedEvent and returns nothing 
-// if we dint want it to be thread safe we cud have used just Box 
 
 #[derive(Debug , Error)]
 pub enum OrderBookError{
     // aff errors that can occour 
 }
-#[derive(Debug)]
 
-
-
-pub enum Event {
-    PriceLevelChangedEvent(PriceLevelChangedEvent) ,
-    MatchResult(MatchResult)
-}
 
 #[derive(Debug , Error)]
 pub enum PubLishError{
@@ -142,11 +109,33 @@ pub enum QueueError{
     QueueEmptyError
 }
 
-pub struct MarketDataUpdate{
-    pub ticker_data : TickerData , 
-    pub depth_data : DepthData ,
-    pub trade_data : TradeData , 
+
+#[derive(Debug)]
+pub struct Event {
+    market_update :  MarketUpdateAfterTrade
 }
+
+impl Event{
+    pub fn new(market_update : MarketUpdateAfterTrade)->Self{
+        Self { market_update }
+    }
+}
+#[derive(Debug)]
+pub struct MarketUpdateAfterTrade{
+    pub symbol : u32 ,
+    pub last_traded_price : u64 , 
+    pub depth : (Vec<[String ; 3]> , Vec<[String ; 3]>),
+    pub event_time : i64 ,
+    pub trade_time : i64 , 
+    pub match_result : MatchResult
+}
+impl MarketUpdateAfterTrade {
+    pub fn new(symbol : u32 , last_traded_price : u64 ,  depth : (Vec<[String ; 3]> , Vec<[String ; 3]>), event_time : i64 ,trade_time : i64 , match_result : MatchResult)->Self{
+        Self { symbol , last_traded_price, depth, event_time, trade_time ,  match_result }
+    }
+}
+
+
 
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -224,3 +213,6 @@ pub struct TradeData {
     #[serde(rename = "m")]
     pub is_buyer_maker: bool,
 }
+
+
+// the trade data will be extracted by each fills by the manager 

@@ -1,11 +1,13 @@
+use chrono::prelude::*;
 use std::collections::HashMap;
 use crate::orderbook::order::{Order, Side};
-use crate::orderbook::types::{Event, Fills, MatchResult} ;
+use crate::orderbook::types::{Event, Fills, MarketUpdateAfterTrade, MatchResult} ;
 use crate::orderbook::order_book::OrderBook;
 use crate::shm::queue::Queue;
 use crossbeam::channel::{Sender , Receiver};
 use crossbeam::queue::ArrayQueue;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use crate::singlepsinglecq::my_queue::SpscQueue;
 
 
@@ -82,8 +84,11 @@ impl MyEngine{
             //}
 
             if let Some(mut recieved_order) = self.bm_engine_order_queue.pop(){
-
+                
                 if let Some(order_book) = self.get_book_mut(recieved_order.symbol){
+                    let order_book_symbol = order_book.symbol;
+                    let order_book_last_price = order_book.last_trade_price.load(Ordering::Relaxed);
+                    let order_book_depth = order_book.get_depth();
                     let events = match recieved_order.order_type {
                         0 => order_book.match_market_order(&mut recieved_order),
                         1 =>{
@@ -102,8 +107,17 @@ impl MyEngine{
                    // println!("order matched events created ");
                     if let Ok(match_result)=events{
                         let _ = self.fill_queue.push(match_result.fills.clone());
+                        let now_utc = Utc::now();
                      //   println!("sending fills to balance manager ");
-                        let _ = self.event_queue.push(Event::MatchResult(match_result));
+                        let market_update = MarketUpdateAfterTrade::new(
+                            order_book_symbol, 
+                            order_book_last_price,
+                            order_book_depth,
+                            now_utc.timestamp(), 
+                            now_utc.timestamp(), 
+                            match_result
+                        );
+                        let _ = self.event_queue.push(Event::new(market_update));
                        // println!("sedning events to publisher ");
                     }
                     count += 1;
