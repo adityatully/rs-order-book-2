@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use crate::orderbook::order::{Order, Side};
 use crate::orderbook::types::{Event, Fills, MarketUpdateAfterTrade, MatchResult} ;
 use crate::orderbook::order_book::OrderBook;
-use crate::shm::queue::Queue;
 use crossbeam::channel::{Sender , Receiver};
 use crossbeam::queue::ArrayQueue;
 use std::sync::Arc;

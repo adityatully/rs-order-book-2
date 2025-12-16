@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use rust_orderbook_2::balance_manager::my_balance_manager::{ MyBalanceManager};
 use rust_orderbook_2::balance_manager::my_balance_manager2::{ MyBalanceManager2};
 use rust_orderbook_2::balance_manager::types::{BalanceQuery , HoldingsQuery};
 use rust_orderbook_2::orderbook::order::Order;
@@ -9,6 +8,7 @@ use rust_orderbook_2::orderbook::{types::Event};
 use rust_orderbook_2::engine::my_engine::{ Engine, MyEngine};
 use rust_orderbook_2::publisher::event_publisher::EventPublisher;
 use core_affinity;
+use rust_orderbook_2::pubsub::pubsub_manager::RedisPubSubManager;
 use rust_orderbook_2::shm::reader::ShmReader;
 use rust_orderbook_2::singlepsinglecq::my_queue::SpscQueue;
 use crossbeam::queue::ArrayQueue;
@@ -129,14 +129,18 @@ fn main(){
     });
 
     running_engines.push(first_join_handle);
-
+    let pubsub_connection = RedisPubSubManager::new("localhost:6379");
+    if pubsub_connection.is_err(){
+        panic!("pubsub error , not initialising publisher");
+    }
     //PUBLISHER REQUIRES AN EVENT RECV ONLY 
     let publisher_handle = std::thread::spawn(move || {
         core_affinity::set_for_current(core_affinity::CoreId { id: 5 });
 
         let mut my_publisher = EventPublisher::new(
             event_receiver_clone,
-            event_queue_clone_for_publisher
+            event_queue_clone_for_publisher,
+            pubsub_connection.unwrap()
         );
 
         my_publisher.start_publisher();

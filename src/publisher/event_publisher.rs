@@ -1,15 +1,16 @@
 use crossbeam::{channel::Receiver, queue::ArrayQueue};
-use crate::orderbook::types::Event;
+use crate::{orderbook::types::Event, pubsub::pubsub_manager::RedisPubSubManager};
 use std::sync::Arc;
 use crate::singlepsinglecq::my_queue::SpscQueue;
 
 pub struct EventPublisher {
     pub receiver: Receiver<Event>,   
-    pub event_queue : Arc<SpscQueue<Event>>
+    pub event_queue : Arc<SpscQueue<Event>> , 
+    pub mypubsub : RedisPubSubManager
 }
 impl EventPublisher {
-    pub fn new(rx: Receiver<Event> , event_queue : Arc<SpscQueue<Event>>) -> Self {
-        Self { receiver: rx , event_queue }
+    pub fn new(rx: Receiver<Event> , event_queue : Arc<SpscQueue<Event>> , mypubsub : RedisPubSubManager) -> Self {
+        Self { receiver: rx , event_queue  , mypubsub}
     }
     pub fn start_publisher(&mut self) {
         let mut batch = Vec::with_capacity(10_000);
