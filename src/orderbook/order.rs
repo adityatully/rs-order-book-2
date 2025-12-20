@@ -75,3 +75,12 @@ impl Default for ShmOrder {
         }
     }
 }
+
+#[repr(C)]
+#[derive(Debug , Clone , Copy)]
+pub struct OrderToBeCanceled{
+    pub order_id : u64 ,
+    pub user_id : u64 ,
+    pub symbol : u32
+}
+
