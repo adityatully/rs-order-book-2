@@ -35,13 +35,13 @@ const _: () = {
 };
 
 #[derive(Debug)]
-pub struct Queue {
+pub struct CancelOrderQueue {
     mmap: MmapMut,
     header_ptr: *mut QueueHeader, // Cached pointer
     orders_ptr: *mut OrderToBeCanceled,       // Cached orders pointer
 }
 
-impl Queue {
+impl CancelOrderQueue {
     pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, QueueError> {
         let _ = fs::remove_file(&path);
     
@@ -91,7 +91,7 @@ impl Queue {
             mmap.as_mut_ptr().add(HEADER_SIZE) as *mut OrderToBeCanceled
         };
     
-        Ok(Queue {
+        Ok(CancelOrderQueue {
             mmap,
             header_ptr,
             orders_ptr,
@@ -141,7 +141,7 @@ impl Queue {
             });
         }
 
-        Ok(Queue {
+        Ok(CancelOrderQueue {
             mmap,
             header_ptr,
             orders_ptr,
@@ -247,7 +247,7 @@ impl Queue {
     }
 }
 
-impl Drop for Queue {
+impl Drop for CancelOrderQueue {
     fn drop(&mut self) {
         // Flush before closing
         let _ = self.mmap.flush();
@@ -297,6 +297,6 @@ impl std::fmt::Display for QueueError {
 impl std::error::Error for QueueError {}
 
 // Thread-safe: Queue can be sent between threads
-unsafe impl Send for Queue {}
+unsafe impl Send for CancelOrderQueue {}
 // Not Sync: only one thread should access at a time (SPSC model)
 

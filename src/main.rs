@@ -9,14 +9,24 @@ use rust_orderbook_2::engine::my_engine::{ Engine, MyEngine};
 use rust_orderbook_2::publisher::event_publisher::EventPublisher;
 use core_affinity;
 use rust_orderbook_2::pubsub::pubsub_manager::RedisPubSubManager;
-use rust_orderbook_2::shm::queue::Queue;
+use rust_orderbook_2::shm::queue::IncomingOrderQueue;
+use rust_orderbook_2::shm::cancel_orders_queue::CancelOrderQueue;
+use rust_orderbook_2::shm::event_queue::OrderEventQueue;
+use rust_orderbook_2::shm::query_queue::QueryQueue;
+use rust_orderbook_2::shm::query_response_queue::QueryResQueue;
+
 use rust_orderbook_2::shm::reader::ShmReader;
 use rust_orderbook_2::singlepsinglecq::my_queue::SpscQueue;
 use crossbeam::queue::ArrayQueue;
 
 #[hotpath::main]
 fn main(){
-    let _ = Queue::create("/tmp/sex");
+    let incoming_order_queue = IncomingOrderQueue::create("/trading/IncomingOrders");
+    let cancel_order_queue = CancelOrderQueue::create("/trading/CancelOrders");
+    let order_event_queue = OrderEventQueue::create("/trading/OrderEvents");
+    let query_queue = QueryQueue::create("/trading/queries");
+    let query_response_queue = QueryResQueue::create("/trading/QueryResponse");
+
     let fill_queue = Arc::new(SpscQueue::<Fills>::new(32768));
     let event_queue = Arc::new(SpscQueue::<Event>::new(32768));
     let bm_engine_order_queue = Arc::new(SpscQueue::<Order>::new(32768));

@@ -55,13 +55,13 @@ const _: () = {
 };
 
 #[derive(Debug)]
-pub struct Queue {
+pub struct IncomingOrderQueue {
     mmap: MmapMut,
     header_ptr: *mut QueueHeader, // Cached pointer
     orders_ptr: *mut ShmOrder,       // Cached orders pointer
 }
 
-impl Queue {
+impl IncomingOrderQueue {
     pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, QueueError> {
         let _ = fs::remove_file(&path);
     
@@ -111,7 +111,7 @@ impl Queue {
             mmap.as_mut_ptr().add(HEADER_SIZE) as *mut ShmOrder
         };
     
-        Ok(Queue {
+        Ok(IncomingOrderQueue {
             mmap,
             header_ptr,
             orders_ptr,
@@ -161,7 +161,7 @@ impl Queue {
             });
         }
 
-        Ok(Queue {
+        Ok(IncomingOrderQueue {
             mmap,
             header_ptr,
             orders_ptr,
@@ -267,7 +267,7 @@ impl Queue {
     }
 }
 
-impl Drop for Queue {
+impl Drop for IncomingOrderQueue {
     fn drop(&mut self) {
         // Flush before closing
         let _ = self.mmap.flush();
@@ -317,7 +317,7 @@ impl std::fmt::Display for QueueError {
 impl std::error::Error for QueueError {}
 
 // Thread-safe: Queue can be sent between threads
-unsafe impl Send for Queue {}
+unsafe impl Send for IncomingOrderQueue {}
 // Not Sync: only one thread should access at a time (SPSC model)
 
 #[cfg(test)]
@@ -355,7 +355,7 @@ mod tests {
         let _ = std::fs::remove_file(path);
 
         // Create queue
-        let _queue = Queue::open(path).expect_err("Should fail before creation");
+        let _queue = IncomingOrderQueue::open(path).expect_err("Should fail before creation");
 
         // This test expects Go to create the queue first
         // So we skip in normal test runs

@@ -4,12 +4,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use rust_orderbook_2::shm::queue::Queue;
+use rust_orderbook_2::shm::queue::IncomingOrderQueue;
 use rust_orderbook_2::orderbook::order::ShmOrder;
 
 fn main() {
     // ==== Open queue ====
-    let mut q = Queue::open("/tmp/sex").expect("Failed to open queue");
+    let mut q = IncomingOrderQueue::open("/trading/IncomingOrders").expect("Failed to open queue");
 
     println!("[OMS] Rust Producer - THROUGHPUT TEST MODE");
     println!("[OMS] Using concentrated price levels with alternating users");

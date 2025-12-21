@@ -2,7 +2,7 @@
 use std::sync::Arc;
 use crate::shm::queue::QueueError;
 // SHM reader , passed ordrs to the balance manager 
-use crate::{orderbook::order::ShmOrder, shm::queue::Queue};
+use crate::{orderbook::order::ShmOrder, shm::queue::IncomingOrderQueue};
 use crate::orderbook::order::Side;
 use crossbeam::queue::ArrayQueue;
 use crossbeam::{channel::Sender};
@@ -11,7 +11,7 @@ use crate::orderbook::types::{ShmReaderError};
 use crate::singlepsinglecq::my_queue::SpscQueue;
 
 pub struct ShmReader {
-    pub queue: Queue,  
+    pub queue: IncomingOrderQueue,  
     pub order_sender_to_balance_manager: Sender<Order>,
     pub shm_bm_order_queue : Arc<SpscQueue<Order>>,
     pub order_batch : Vec<ShmOrder>
@@ -20,7 +20,7 @@ pub struct ShmReader {
 impl ShmReader {
     /// Returns None if queue can't be opened
     pub fn new(order_sender_to_balance_manager: Sender<Order> , shm_bm_order_queue : Arc<SpscQueue<Order>>) -> Option<Self> {
-        match Queue::open("/tmp/sex") {
+        match IncomingOrderQueue::open("/trading/IncomingOrders") {
             Ok(queue) => Some(Self { queue, order_sender_to_balance_manager , shm_bm_order_queue  , order_batch : Vec::with_capacity(1000)}),
             Err(e) => {
                 eprintln!("[SHM Reader] Failed to open queue: {:?}", e);
@@ -168,12 +168,12 @@ impl ShmReader {
 
 
 pub struct StShmReader{
-    pub queue: Queue,
+    pub queue: IncomingOrderQueue,
 }
 
 impl StShmReader{
     pub fn new() -> Option<Self> {
-        match Queue::open("/tmp/sex") {
+        match IncomingOrderQueue::open("/tmp/sex") {
             Ok(queue) => Some(Self { queue }),
             Err(e) => {
                 eprintln!("[SHM Reader] Failed to open queue: {:?}", e);
