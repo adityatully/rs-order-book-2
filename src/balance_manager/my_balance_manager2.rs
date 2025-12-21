@@ -25,7 +25,7 @@ const MAX_SYMBOLS : usize = 100 ;
 const DEFAULT_BALANCE : u64 = 10000;
 #[repr(C)]
 #[repr(align(64))]  
-#[derive(Debug)]
+#[derive(Debug , Clone, Copy)]
 pub struct UserBalance {
     pub user_id: u64,   // 8        
     pub available_balance: u64,      
@@ -44,10 +44,10 @@ impl Default for UserBalance{
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug , Clone, Copy)]
 pub struct UserHoldings{
     pub user_id: u64,     // 8 byte 
-    pub available_holdings : [u32 ; MAX_SYMBOLS],
+    pub available_holdings : [u32 ; MAX_SYMBOLS], // symbol is a uique index in the array 
     pub reserved_holdings : [u32 ; MAX_SYMBOLS]
 }
 impl Default for UserHoldings{
