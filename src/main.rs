@@ -23,11 +23,13 @@ use rust_orderbook_2::singlepsinglecq::my_queue::SpscQueue;
 fn main(){
     // initilaise all queues once , mmap with the virtual adddress space of this process 
     // threads can indivisually open the queues (SPSC)
-    let _ = IncomingOrderQueue::create("/trading/IncomingOrders");
-    let _ = CancelOrderQueue::create("/trading/CancelOrders");
-    let _ = OrderEventQueue::create("/trading/OrderEvents");
-    let _ = QueryQueue::create("/trading/queries");
-    let _ = QueryResQueue::create("/trading/QueryResponse");
+    std::fs::create_dir_all("/tmp/trading").expect("failed to init director");
+
+    let _ = IncomingOrderQueue::create("/tmp/trading/IncomingOrders");
+    let _ = CancelOrderQueue::create("/tmp/trading/CancelOrders");
+    let _ = OrderEventQueue::create("/tmp/trading/OrderEvents");
+    let _ = QueryQueue::create("/tmp/trading/queries");
+    let _ = QueryResQueue::create("/tmp/trading/QueryResponse");
 
 
 

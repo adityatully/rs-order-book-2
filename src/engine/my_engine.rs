@@ -38,7 +38,7 @@ pub struct MyEngine{
 impl MyEngine{
     pub fn new(event_publisher : Sender<Event>, engine_id : usize , sender_to_balance_manager: Sender<Fills> , order_receiver :Receiver<Order> , bm_engine_order_queue : Arc<SpscQueue<Order>>, fill_queue : Arc<SpscQueue<Fills>>,event_queue : Arc<SpscQueue<Event>>)->Option<Self> {
 
-            let cancel_orders_queue = CancelOrderQueue::open("/trading/CancelOrders");
+            let cancel_orders_queue = CancelOrderQueue::open("/tmp/trading/CancelOrders");
             match cancel_orders_queue {
                 Ok(queue)=>{
                     Some(Self{

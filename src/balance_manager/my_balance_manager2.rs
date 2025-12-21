@@ -107,13 +107,15 @@ pub struct MyBalanceManager2{
 
 impl MyBalanceManager2{
     pub fn new(order_sender : Sender<Order> , fill_recv :Receiver<Fills> , order_receiver : Receiver<Order> , balance_query_receiver: Receiver<BalanceQuery>, holdings_query_receiver: Receiver<HoldingsQuery> , fill_queue : Arc<SpscQueue<Fills>>,shm_bm_order_queue : Arc<SpscQueue<Order>>,bm_engine_order_queue : Arc<SpscQueue<Order>> , bm_writer_order_event_queue : Arc<SpscQueue<OrderEvents>>)->Self{
-        let query_queue = QueryQueue::open("/trading/queries");
-        let query_response_queue = QueryResQueue::open("/trading/QueryResponse");
+        let query_queue = QueryQueue::open("/tmp/trading/queries");
+        let query_response_queue = QueryResQueue::open("/tmp/trading/QueryResponse");
         if query_queue.is_err(){
-            eprint!("query ququ init error");
+            eprintln!("query quque init error in balance manager");
+            eprintln!("{:?}" , query_queue)
         }
         if query_response_queue.is_err(){
-            eprint!("response queue init error");
+            eprintln!("response queue init error in balance manager");
+            eprintln!("{:?}" , query_queue)
         }
         let balance_state = BalanceState::new();
         Self { order_sender, fill_recv, order_receiver, state: balance_state , balance_query_receiver , holdings_query_receiver

@@ -20,7 +20,7 @@ pub struct ShmReader {
 impl ShmReader {
     /// Returns None if queue can't be opened
     pub fn new(order_sender_to_balance_manager: Sender<Order> , shm_bm_order_queue : Arc<SpscQueue<Order>>) -> Option<Self> {
-        match IncomingOrderQueue::open("/trading/IncomingOrders") {
+        match IncomingOrderQueue::open("/tmp/trading/IncomingOrders") {
             Ok(queue) => Some(Self { queue, order_sender_to_balance_manager , shm_bm_order_queue  , order_batch : Vec::with_capacity(1000)}),
             Err(e) => {
                 eprintln!("[SHM Reader] Failed to open queue: {:?}", e);

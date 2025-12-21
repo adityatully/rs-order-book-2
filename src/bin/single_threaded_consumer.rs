@@ -93,7 +93,7 @@ impl TradingCore {
 
 #[hotpath::main]
 fn main() {
-    let _ = IncomingOrderQueue::create("/trading/IncomingOrders");
+    let _ = IncomingOrderQueue::create("/tmp/trading/IncomingOrders");
     let mut trading_system = TradingCore::new();
     trading_system.balance_manager.add_throughput_test_users();
     trading_system.engine.add_book(0);
