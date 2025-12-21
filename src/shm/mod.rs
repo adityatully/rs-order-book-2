@@ -4,3 +4,4 @@ pub mod cancel_orders_queue;
 pub mod query_queue;
 pub mod event_queue;
 pub mod query_response_queue;
+pub mod writer;
