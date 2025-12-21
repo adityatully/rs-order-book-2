@@ -37,7 +37,7 @@ impl Fill{
         self.price * self.quantity as u64
     }
 }
-#[derive(Debug  , Clone)]
+#[derive(Debug  , Clone )]
 pub struct Fills{
     pub fills : Vec<Fill>
 }
@@ -87,7 +87,7 @@ pub enum PubLishError{
 pub enum PublishSuccess{
     
 }
-#[derive(Debug )]
+#[derive(Debug , Clone, Copy )]
 pub enum BalanceManagerError{
     InsufficientFunds ,
     BalanceLockingFailed , 
