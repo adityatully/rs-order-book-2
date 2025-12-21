@@ -14,12 +14,15 @@ use std::sync::Arc;
 use crossbeam::queue::ArrayQueue;
 use crossbeam_utils::Backoff;
 // no shared state in this approach , 
+use crate::shm::event_queue::EventType;
 use dashmap::DashMap;
 use crossbeam::channel::{Receiver, Sender};
 use crate::orderbook::types::{BalanceManagerError, Fills, };
 use crate::orderbook::order::{ Order, Side};
 use crate::balance_manager::types::{BalanceQuery , HoldingsQuery};
 use crate::shm::event_queue::OrderEvents;
+use crate::shm::query_queue::{self, QueryQueue, QueryType};
+use crate::shm::query_response_queue::{self, QueryResQueue, QueryResponse , Response};
 use crate::singlepsinglecq::my_queue::SpscQueue;
 const MAX_USERS: usize = 100; // pre allocating for a max of 100 users 
 const MAX_SYMBOLS : usize = 100 ; 
@@ -97,14 +100,24 @@ pub struct MyBalanceManager2{
     pub fill_queue : Arc<SpscQueue<Fills>>,
     pub shm_bm_order_queue : Arc<SpscQueue<Order>>,
     pub bm_engine_order_queue : Arc<SpscQueue<Order>>,
-    pub bm_writer_order_event_queue : Arc<SpscQueue<OrderEvents>>
+    pub bm_writer_order_event_queue : Arc<SpscQueue<OrderEvents>>,
+    pub query_queue : QueryQueue,
+    pub query_response_queue : QueryResQueue
 }
 
 impl MyBalanceManager2{
     pub fn new(order_sender : Sender<Order> , fill_recv :Receiver<Fills> , order_receiver : Receiver<Order> , balance_query_receiver: Receiver<BalanceQuery>, holdings_query_receiver: Receiver<HoldingsQuery> , fill_queue : Arc<SpscQueue<Fills>>,shm_bm_order_queue : Arc<SpscQueue<Order>>,bm_engine_order_queue : Arc<SpscQueue<Order>> , bm_writer_order_event_queue : Arc<SpscQueue<OrderEvents>>)->Self{
+        let query_queue = QueryQueue::open("/trading/queries");
+        let query_response_queue = QueryResQueue::open("/trading/QueryResponse");
+        if query_queue.is_err(){
+            eprint!("query ququ init error");
+        }
+        if query_response_queue.is_err(){
+            eprint!("response queue init error");
+        }
         let balance_state = BalanceState::new();
         Self { order_sender, fill_recv, order_receiver, state: balance_state , balance_query_receiver , holdings_query_receiver
-        ,fill_queue , shm_bm_order_queue , bm_engine_order_queue , bm_writer_order_event_queue }
+        ,fill_queue , shm_bm_order_queue , bm_engine_order_queue , bm_writer_order_event_queue , query_queue: query_queue.unwrap() , query_response_queue: query_response_queue.unwrap()}
     }
     pub fn get_user_index(&self , user_id : u64 )->Result<u32 , BalanceManagerError>{
         self.state.user_id_to_index
@@ -118,7 +131,12 @@ impl MyBalanceManager2{
     pub fn get_user_holdings(&mut self , user_index : u32)->&mut UserHoldings{
         &mut self.state.holdings[user_index as usize]
     }
-    
+    pub fn get_user_balance_copy_for_query(&mut self , user_index : u32)->UserBalance{
+        self.state.balances[user_index as usize]
+    }
+    pub fn get_user_holdings_copy_for_query(&mut self , user_index : u32)->UserHoldings{
+        self.state.holdings[user_index as usize]
+    }
     //// returned the state so that it can be passed to the grpc server 
      #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn check_and_lock_funds(&mut self , order : Order)->Result<() , BalanceManagerError>{
@@ -268,9 +286,10 @@ pub fn run_balance_manager(&mut self) {
                             }
                             count += 1;
                         }
-                        Err(e) => {
+                        Err(_) => {
                             // insufficient funds — drop or log minimal
                             //eprintln!("[BM] Insufficient funds: {:?}", e);
+                            let _ = self.bm_writer_order_event_queue.push(OrderEvents { user_id: recieved_order.user_id, order_id:recieved_order.order_id, symbol: recieved_order.symbol, event_type: EventType::Rejected(BalanceManagerError::InsufficientFunds) });
                         }
                     }
                     processed += 1;
@@ -279,7 +298,36 @@ pub fn run_balance_manager(&mut self) {
                 None => break,
             }
         }
+        match self.query_queue.dequeue(){
+            Ok(Some(rec_query))=>{
+                match rec_query.query_type{
+                    QueryType::AddUser =>{
+                        // expose function
+                    }
+                    QueryType::GetBalance =>{
+                        let user_index = self.get_user_index(rec_query.user_id);
+                        if user_index.is_ok(){
+                            let user_balance = self.get_user_balance_copy_for_query(user_index.unwrap());
+                            let _ = self.query_response_queue.enqueue(QueryResponse { query_id:rec_query.query_id , user_id: rec_query.user_id, response:Response::Balance(user_balance) });
+                        }
+                        
+                    }
+                    QueryType::GetHoldings=>{
+                        let user_index = self.get_user_index(rec_query.user_id);
+                        if user_index.is_ok(){
+                            let user_holdings = self.get_user_holdings_copy_for_query(user_index.unwrap());
+                            let _ = self.query_response_queue.enqueue(QueryResponse { query_id:rec_query.query_id , user_id: rec_query.user_id, response:Response::Holdings(user_holdings) });
+                        }
+                    }
+                }
+            }
+            Ok(None)=>{
 
+            }
+            Err(_)=>{
+
+            }
+        }
         // 3) If nothing processed this iteration, backoff to avoid 100% busy spin
         if processed == 0 {
             if self.fill_queue.is_empty() && self.shm_bm_order_queue.is_empty() {

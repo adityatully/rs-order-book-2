@@ -216,7 +216,7 @@ impl QueryResQueue {
         Ok(Some(order))
     }
 
-    pub fn enqueue(&mut self, order: QueryResponse) -> Result<(), QueueError> {
+    pub fn enqueue(&mut self, query_response: QueryResponse) -> Result<(), QueueError> {
         let header = self.header_mut();
 
         let consumer_tail = header.consumer_tail.load(Ordering::Acquire);
@@ -231,7 +231,7 @@ impl QueryResQueue {
         }
 
         let pos = (producer_head % QUEUE_CAPACITY as u64) as usize;
-        self.set_order(pos, order);
+        self.set_order(pos, query_response);
 
         header.producer_head.store(next_head, Ordering::Release);
 
