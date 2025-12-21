@@ -72,6 +72,9 @@ impl EventPublisher {
                         }
                     }
                     // we need to send trade messages for all fills 
+                    // sedning order events to the shm writter for the partuclar order updates 
+                    
+                    
                 }
                 
                 None =>{

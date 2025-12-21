@@ -61,15 +61,12 @@ pub struct MatchResult{
     pub order_id : OrderId , 
     pub fills : Fills,
     pub remaining_qty : u32,
+    pub orignal_qty : u32 ,
 }
 
 impl MatchResult{
-    pub fn new(order_id: OrderId, initial_quantity: u32)->Self{
-        Self { order_id , fills: Fills::new(), remaining_qty: initial_quantity }
-    }
-    pub fn add_transaction(&mut self , fill : Fill){
-       self.remaining_qty =  self.remaining_qty.saturating_sub(fill.quantity);
-       self.fills.add(fill);
+    pub fn new(order_id: OrderId, initial_quantity: u32, orignal_qty : u32)->Self{
+        Self { order_id , fills: Fills::new(), remaining_qty: initial_quantity , orignal_qty }
     }
 }
 

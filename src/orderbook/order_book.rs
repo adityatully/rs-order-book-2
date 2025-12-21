@@ -39,6 +39,7 @@ impl OrderBook{
     }
 
     pub fn match_market_order(&mut self , order:&mut Order )->Result<MatchResult , OrderBookError>{
+        let orignal_shares_qty = order.shares_qty;
         // wejust need to fill the shares 
         //if a very large maket order comes and there are not enough shares for it to eat , its canceled
         self.fill_buffer.clear();
@@ -117,12 +118,13 @@ impl OrderBook{
         }
 
         Ok(MatchResult{
-            order_id : order.order_id , fills : {Fills { fills: self.fill_buffer.clone() }} , remaining_qty:0
+            order_id : order.order_id , fills : {Fills { fills: self.fill_buffer.clone() }} , remaining_qty:order.shares_qty , orignal_qty:orignal_shares_qty
         }) 
     }
 
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn match_bid(&mut self , order: &mut Order)->Result<MatchResult , OrderBookError>{
+        let orignal_shares_qty = order.shares_qty;
        // println!("recived the order , matching now");
        self.fill_buffer.clear();
         //let mut fills =  Fills::new();
@@ -223,11 +225,12 @@ impl OrderBook{
         }
 
         Ok(MatchResult{
-            order_id : order.order_id , fills : {Fills { fills: self.fill_buffer.clone() }} , remaining_qty : order.shares_qty
+            order_id : order.order_id , fills : {Fills { fills: self.fill_buffer.clone() }} , remaining_qty : order.shares_qty , orignal_qty : orignal_shares_qty
         })
     }
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn match_ask(&mut self , order: &mut Order)->Result<MatchResult , OrderBookError>{
+        let orignal_shares_qty = order.shares_qty;
        // println!("recived the order , matching now");
        // let mut fills = Fills::new();
        self.fill_buffer.clear();
@@ -322,7 +325,7 @@ impl OrderBook{
             );
         }
         Ok(MatchResult{
-            order_id : order.order_id , fills : {Fills { fills: self.fill_buffer.clone() }} , remaining_qty : order.shares_qty
+            order_id : order.order_id , fills : {Fills { fills: self.fill_buffer.clone() }} , remaining_qty : order.shares_qty , orignal_qty:orignal_shares_qty
         })
     }
 
