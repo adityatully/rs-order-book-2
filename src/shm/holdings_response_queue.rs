@@ -12,14 +12,8 @@ use std::os::unix::fs::OpenOptionsExt;
 pub struct HoldingResponse{
     pub query_id : u64,
     pub user_id : u64 ,
-    pub response : Hresponse
+    pub response : UserHoldings
 }
-#[repr(C)]
-#[derive(Debug , Clone, Copy)]
-pub enum Hresponse{
-    Holdings(UserHoldings)
-}
-
 
 // QueueHeader with cache-line padding matching Go
 #[repr(C)]

@@ -15,7 +15,7 @@ use crossbeam::queue::ArrayQueue;
 use crossbeam_utils::Backoff;
 // no shared state in this approach , 
 use crate::shm::event_queue::EventType;
-use crate::shm::holdings_response_queue::{HoldingResQueue, HoldingResponse, Hresponse};
+use crate::shm::holdings_response_queue::{HoldingResQueue, HoldingResponse};
 use dashmap::DashMap;
 use crossbeam::channel::{Receiver, Sender};
 use crate::orderbook::types::{BalanceManagerError, Fills, };
@@ -327,7 +327,7 @@ pub fn run_balance_manager(&mut self) {
                         let user_index = self.get_user_index(rec_query.user_id);
                         if user_index.is_ok(){
                             let user_holdings = self.get_user_holdings_copy_for_query(user_index.unwrap());
-                            let _ = self.holding_response_queue.enqueue(HoldingResponse { query_id:rec_query.query_id , user_id: rec_query.user_id, response:Hresponse::Holdings(user_holdings) });
+                            let _ = self.holding_response_queue.enqueue(HoldingResponse { query_id:rec_query.query_id , user_id: rec_query.user_id, response:user_holdings });
                         }
                     }
                 }
