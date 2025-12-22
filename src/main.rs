@@ -9,11 +9,12 @@ use rust_orderbook_2::engine::my_engine::{ Engine, MyEngine};
 use rust_orderbook_2::publisher::event_publisher::EventPublisher;
 use core_affinity;
 use rust_orderbook_2::pubsub::pubsub_manager::RedisPubSubManager;
+use rust_orderbook_2::shm::holdings_response_queue::HoldingResQueue;
 use rust_orderbook_2::shm::queue::IncomingOrderQueue;
 use rust_orderbook_2::shm::cancel_orders_queue::CancelOrderQueue;
 use rust_orderbook_2::shm::event_queue::{OrderEventQueue, OrderEvents};
 use rust_orderbook_2::shm::query_queue::QueryQueue;
-use rust_orderbook_2::shm::query_response_queue::QueryResQueue;
+use rust_orderbook_2::shm::balance_response_queue::{BalanceResQueue};
 use rust_orderbook_2::shm::reader::ShmReader;
 use rust_orderbook_2::shm::writer::ShmWriter;
 use rust_orderbook_2::singlepsinglecq::my_queue::SpscQueue;
@@ -29,7 +30,8 @@ fn main(){
     let _ = CancelOrderQueue::create("/tmp/trading/CancelOrders").expect("failed to create queue");
     let _ = OrderEventQueue::create("/tmp/trading/OrderEvents").expect("failed to create queue");
     let _ = QueryQueue::create("/tmp/trading/queries").expect("failed to create queue");
-    let _ = QueryResQueue::create("/tmp/trading/QueryResponse").expect("failed to create queue");
+    let _ = HoldingResQueue::create("/tmp/trading/HoldingsResponse").expect("failed to create queue");
+    let _ = BalanceResQueue::create("/tmp/trading/BalanceResponse").expect("failed to open queue");
 
 
 

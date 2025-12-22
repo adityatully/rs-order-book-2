@@ -15,6 +15,7 @@ use crossbeam::queue::ArrayQueue;
 use crossbeam_utils::Backoff;
 // no shared state in this approach , 
 use crate::shm::event_queue::EventType;
+use crate::shm::holdings_response_queue::{HoldingResQueue, HoldingResponse, Hresponse};
 use dashmap::DashMap;
 use crossbeam::channel::{Receiver, Sender};
 use crate::orderbook::types::{BalanceManagerError, Fills, };
@@ -22,7 +23,7 @@ use crate::orderbook::order::{ Order, Side};
 use crate::balance_manager::types::{BalanceQuery , HoldingsQuery};
 use crate::shm::event_queue::OrderEvents;
 use crate::shm::query_queue::{self, QueryQueue, QueryType};
-use crate::shm::query_response_queue::{self, QueryResQueue, QueryResponse , Response};
+use crate::shm::balance_response_queue::{self, BalanceResQueue, BalanceResponse, Bresponse};
 use crate::singlepsinglecq::my_queue::SpscQueue;
 const MAX_USERS: usize = 100; // pre allocating for a max of 100 users 
 const MAX_SYMBOLS : usize = 100 ; 
@@ -102,24 +103,30 @@ pub struct MyBalanceManager2{
     pub bm_engine_order_queue : Arc<SpscQueue<Order>>,
     pub bm_writer_order_event_queue : Arc<SpscQueue<OrderEvents>>,
     pub query_queue : QueryQueue,
-    pub query_response_queue : QueryResQueue
+    pub balance_response_queue : BalanceResQueue,
+    pub holding_response_queue : HoldingResQueue,
 }
 
 impl MyBalanceManager2{
     pub fn new(order_sender : Sender<Order> , fill_recv :Receiver<Fills> , order_receiver : Receiver<Order> , balance_query_receiver: Receiver<BalanceQuery>, holdings_query_receiver: Receiver<HoldingsQuery> , fill_queue : Arc<SpscQueue<Fills>>,shm_bm_order_queue : Arc<SpscQueue<Order>>,bm_engine_order_queue : Arc<SpscQueue<Order>> , bm_writer_order_event_queue : Arc<SpscQueue<OrderEvents>>)->Self{
         let query_queue = QueryQueue::open("/tmp/trading/queries");
-        let query_response_queue = QueryResQueue::open("/tmp/trading/QueryResponse");
+        let holding_response_queue = HoldingResQueue::open("/tmp/trading/HoldingsResponse");
+        let balance_response_queue = BalanceResQueue::open("/tmp/trading/BalanceResponse");
         if query_queue.is_err(){
             eprintln!("query quque init error in balance manager");
             eprintln!("{:?}" , query_queue)
         }
-        if query_response_queue.is_err(){
+        if balance_response_queue.is_err(){
             eprintln!("response queue init error in balance manager");
-            eprintln!("{:?}" , query_queue)
+            eprintln!("{:?}" , balance_response_queue)
+        }
+        if holding_response_queue.is_err(){
+            eprintln!("response queue init error in balance manager");
+            eprintln!("{:?}" , holding_response_queue)
         }
         let balance_state = BalanceState::new();
         Self { order_sender, fill_recv, order_receiver, state: balance_state , balance_query_receiver , holdings_query_receiver
-        ,fill_queue , shm_bm_order_queue , bm_engine_order_queue , bm_writer_order_event_queue , query_queue: query_queue.unwrap() , query_response_queue: query_response_queue.unwrap()}
+        ,fill_queue , shm_bm_order_queue , bm_engine_order_queue , bm_writer_order_event_queue , query_queue: query_queue.unwrap() , holding_response_queue: holding_response_queue.unwrap() , balance_response_queue : balance_response_queue.unwrap()}
     }
     pub fn get_user_index(&self , user_id : u64 )->Result<u32 , BalanceManagerError>{
         self.state.user_id_to_index
@@ -310,15 +317,17 @@ pub fn run_balance_manager(&mut self) {
                         let user_index = self.get_user_index(rec_query.user_id);
                         if user_index.is_ok(){
                             let user_balance = self.get_user_balance_copy_for_query(user_index.unwrap());
-                            let _ = self.query_response_queue.enqueue(QueryResponse { query_id:rec_query.query_id , user_id: rec_query.user_id, response:Response::Balance(user_balance) });
-                        }
+                            let _ = self.balance_response_queue.enqueue(BalanceResponse{
+                                query_id : rec_query.query_id , user_id : rec_query.user_id , response : Bresponse::Balance(user_balance)
+                            });
                         
+                        }
                     }
                     QueryType::GetHoldings=>{
                         let user_index = self.get_user_index(rec_query.user_id);
                         if user_index.is_ok(){
                             let user_holdings = self.get_user_holdings_copy_for_query(user_index.unwrap());
-                            let _ = self.query_response_queue.enqueue(QueryResponse { query_id:rec_query.query_id , user_id: rec_query.user_id, response:Response::Holdings(user_holdings) });
+                            let _ = self.holding_response_queue.enqueue(HoldingResponse { query_id:rec_query.query_id , user_id: rec_query.user_id, response:Hresponse::Holdings(user_holdings) });
                         }
                     }
                 }

@@ -1,5 +1,6 @@
 // query response will be a uder balance response or a holdings response or a success on adding a new user 
-use crate::balance_manager::my_balance_manager2::{UserBalance , UserHoldings};
+use crate::balance_manager::my_balance_manager2::{UserBalance};
+use crate::orderbook::order;
 use memmap2::MmapMut;
 use std::fs::{self, OpenOptions };
 use std::path::Path;
@@ -9,17 +10,16 @@ use std::os::unix::fs::OpenOptionsExt;
 
 #[repr(C)]
 #[derive(Debug , Clone, Copy)]
-pub struct QueryResponse{
+pub struct BalanceResponse{
     pub query_id : u64,
     pub user_id : u64 ,
-    pub response : Response
+    pub response : Bresponse
 }
 #[repr(C)]
 #[derive(Debug , Clone, Copy)]
-pub enum Response{
+pub enum Bresponse{
     UserAdded ,
     Balance(UserBalance),
-    Holdings(UserHoldings),
 }
 
 
@@ -38,7 +38,7 @@ pub struct QueueHeader {
 const QUEUE_MAGIC: u32 = 0xDEADBEEF;
 // reduce size 
 const QUEUE_CAPACITY: usize = 65536;
-const ORDER_SIZE: usize = std::mem::size_of::<QueryResponse>();
+const ORDER_SIZE: usize = std::mem::size_of::<BalanceResponse>();
 const HEADER_SIZE: usize = std::mem::size_of::<QueueHeader>();
 const TOTAL_SIZE: usize = HEADER_SIZE + (QUEUE_CAPACITY * ORDER_SIZE);
 
@@ -54,13 +54,13 @@ const _: () = {
 };
 
 #[derive(Debug)]
-pub struct QueryResQueue {
+pub struct BalanceResQueue {
     mmap: MmapMut,
     header_ptr: *mut QueueHeader, // Cached pointer
-    orders_ptr: *mut QueryResponse,       // Cached orders pointer
+    orders_ptr: *mut BalanceResponse,       // Cached orders pointer
 }
 
-impl QueryResQueue {
+impl BalanceResQueue {
     pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, QueueError> {
         let _ = fs::remove_file(&path);
     
@@ -107,10 +107,10 @@ impl QueryResQueue {
             .map_err(|e| QueueError::Flush(e.to_string()))?;
     
         let orders_ptr = unsafe {
-            mmap.as_mut_ptr().add(HEADER_SIZE) as *mut QueryResponse
+            mmap.as_mut_ptr().add(HEADER_SIZE) as *mut BalanceResponse
         };
     
-        Ok(QueryResQueue {
+        Ok(BalanceResQueue {
             mmap,
             header_ptr,
             orders_ptr,
@@ -143,7 +143,7 @@ impl QueryResQueue {
 
         // Cache both pointers
         let header_ptr = { mmap.as_mut_ptr() as *mut QueueHeader };
-        let orders_ptr = unsafe { mmap.as_mut_ptr().add(HEADER_SIZE) as *mut QueryResponse };
+        let orders_ptr = unsafe { mmap.as_mut_ptr().add(HEADER_SIZE) as *mut BalanceResponse };
 
         // Validate
         let header = unsafe { &*header_ptr };
@@ -160,7 +160,7 @@ impl QueryResQueue {
             });
         }
 
-        Ok(QueryResQueue {
+        Ok(BalanceResQueue {
             mmap,
             header_ptr,
             orders_ptr,
@@ -181,21 +181,21 @@ impl QueryResQueue {
 
     /// Get order at position - ZERO COST pointer arithmetic
     #[inline(always)]
-    fn get_order(&self, pos: usize) -> QueryResponse {
+    fn get_balance_response(&self, pos: usize) -> BalanceResponse {
         unsafe { *self.orders_ptr.add(pos) }
     }
 
     /// Set order at position - ZERO COST pointer arithmetic
     #[inline(always)]
-    fn set_order(&self, pos: usize, order: QueryResponse) {
+    fn set_balance_response(&self, pos: usize, response: BalanceResponse) {
         unsafe {
-            *self.orders_ptr.add(pos) = order;
+            *self.orders_ptr.add(pos) = response;
         }
     }
 
     /// ULTRA-FAST dequeue - all pointers cached, no borrows
     #[inline]
-    pub fn dequeue(&mut self) -> Result<Option<QueryResponse>, QueueError> {
+    pub fn dequeue(&mut self) -> Result<Option<BalanceResponse>, QueueError> {
         let header = self.header_mut();
 
         let producer_head = header.producer_head.load(Ordering::Acquire);
@@ -207,7 +207,7 @@ impl QueryResQueue {
 
         let pos = (consumer_tail % QUEUE_CAPACITY as u64) as usize;
         std::sync::atomic::fence(Ordering::Acquire);
-        let order = self.get_order(pos);
+        let order = self.get_balance_response(pos);
 
         header
             .consumer_tail
@@ -216,7 +216,7 @@ impl QueryResQueue {
         Ok(Some(order))
     }
 
-    pub fn enqueue(&mut self, query_response: QueryResponse) -> Result<(), QueueError> {
+    pub fn enqueue(&mut self, query_response: BalanceResponse) -> Result<(), QueueError> {
         let header = self.header_mut();
 
         let consumer_tail = header.consumer_tail.load(Ordering::Acquire);
@@ -231,7 +231,7 @@ impl QueryResQueue {
         }
 
         let pos = (producer_head % QUEUE_CAPACITY as u64) as usize;
-        self.set_order(pos, query_response);
+        self.set_balance_response(pos, query_response);
 
         header.producer_head.store(next_head, Ordering::Release);
 
@@ -255,7 +255,7 @@ impl QueryResQueue {
             .map_err(|e| QueueError::Flush(e.to_string()))
     }
 
-    pub fn dequeue_spin(&mut self, max_spins: usize) -> Result<Option<QueryResponse>, QueueError> {
+    pub fn dequeue_spin(&mut self, max_spins: usize) -> Result<Option<BalanceResponse>, QueueError> {
         for _ in 0..max_spins {
             match self.dequeue()? {
                 Some(order) => return Ok(Some(order)),
@@ -266,7 +266,7 @@ impl QueryResQueue {
     }
 }
 
-impl Drop for QueryResQueue {
+impl Drop for BalanceResQueue {
     fn drop(&mut self) {
         // Flush before closing
         let _ = self.mmap.flush();
@@ -316,6 +316,6 @@ impl std::fmt::Display for QueueError {
 impl std::error::Error for QueueError {}
 
 // Thread-safe: Queue can be sent between threads
-unsafe impl Send for QueryResQueue {}
+unsafe impl Send for BalanceResQueue {}
 // Not Sync: only one thread should access at a time (SPSC model)
 

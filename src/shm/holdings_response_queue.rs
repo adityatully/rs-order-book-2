@@ -1,10 +1,25 @@
+// query response will be a uder balance response or a holdings response or a success on adding a new user 
+use crate::balance_manager::my_balance_manager2::{UserBalance, UserHoldings};
 use memmap2::MmapMut;
 use std::fs::{self, OpenOptions };
 use std::path::Path;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::os::unix::fs::OpenOptionsExt;
 
-use crate::shm::query_queue;
+
+#[repr(C)]
+#[derive(Debug , Clone, Copy)]
+pub struct HoldingResponse{
+    pub query_id : u64,
+    pub user_id : u64 ,
+    pub response : Hresponse
+}
+#[repr(C)]
+#[derive(Debug , Clone, Copy)]
+pub enum Hresponse{
+    Holdings(UserHoldings)
+}
+
 
 // QueueHeader with cache-line padding matching Go
 #[repr(C)]
@@ -17,29 +32,16 @@ pub struct QueueHeader {
     capacity: AtomicU32,      // offset 132
 }
 
-#[repr(C)]
-#[derive(Debug , Clone, Copy)]
-pub struct Query{
-    pub query_id : u64 ,
-    pub user_id : u64 , 
-    pub query_type : QueryType    // 0 -> get balance , 1 -> get holdings , 2 -> add user on login 
-}
-#[repr(C)]
-#[derive(Debug , Clone, Copy)]
-pub enum QueryType{
-    GetBalance ,
-    GetHoldings ,
-    AddUser 
-}
+
 const QUEUE_MAGIC: u32 = 0xDEADBEEF;
 // reduce size 
 const QUEUE_CAPACITY: usize = 65536;
-const ORDER_SIZE: usize = std::mem::size_of::<Query>();
+const ORDER_SIZE: usize = std::mem::size_of::<HoldingResponse>();
 const HEADER_SIZE: usize = std::mem::size_of::<QueueHeader>();
 const TOTAL_SIZE: usize = HEADER_SIZE + (QUEUE_CAPACITY * ORDER_SIZE);
 
 // Compile-time layout assertions (fail build if wrong)
-const _: () = assert!(ORDER_SIZE == 24, "Order must be 24 bytes");
+//const _: () = assert!(ORDER_SIZE == 24, "Order must be 24 bytes");
 const _: () = assert!(HEADER_SIZE == 136, "QueueHeader must be 136 bytes");
 const _: () = {
     // Verify ConsumerTail is at offset 64
@@ -50,13 +52,13 @@ const _: () = {
 };
 
 #[derive(Debug)]
-pub struct QueryQueue {
+pub struct HoldingResQueue {
     mmap: MmapMut,
     header_ptr: *mut QueueHeader, // Cached pointer
-    orders_ptr: *mut Query,       // Cached orders pointer
+    orders_ptr: *mut HoldingResponse,       // Cached orders pointer
 }
 
-impl QueryQueue {
+impl HoldingResQueue {
     pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, QueueError> {
         let _ = fs::remove_file(&path);
     
@@ -103,10 +105,10 @@ impl QueryQueue {
             .map_err(|e| QueueError::Flush(e.to_string()))?;
     
         let orders_ptr = unsafe {
-            mmap.as_mut_ptr().add(HEADER_SIZE) as *mut Query
+            mmap.as_mut_ptr().add(HEADER_SIZE) as *mut HoldingResponse
         };
     
-        Ok(QueryQueue {
+        Ok(HoldingResQueue {
             mmap,
             header_ptr,
             orders_ptr,
@@ -139,7 +141,7 @@ impl QueryQueue {
 
         // Cache both pointers
         let header_ptr = { mmap.as_mut_ptr() as *mut QueueHeader };
-        let orders_ptr = unsafe { mmap.as_mut_ptr().add(HEADER_SIZE) as *mut Query };
+        let orders_ptr = unsafe { mmap.as_mut_ptr().add(HEADER_SIZE) as *mut HoldingResponse };
 
         // Validate
         let header = unsafe { &*header_ptr };
@@ -156,7 +158,7 @@ impl QueryQueue {
             });
         }
 
-        Ok(QueryQueue {
+        Ok(HoldingResQueue {
             mmap,
             header_ptr,
             orders_ptr,
@@ -177,13 +179,13 @@ impl QueryQueue {
 
     /// Get order at position - ZERO COST pointer arithmetic
     #[inline(always)]
-    fn get_order(&self, pos: usize) -> Query {
+    fn get_holding_response(&self, pos: usize) -> HoldingResponse {
         unsafe { *self.orders_ptr.add(pos) }
     }
 
     /// Set order at position - ZERO COST pointer arithmetic
     #[inline(always)]
-    fn set_order(&self, pos: usize, order: Query) {
+    fn set_holding_response(&self, pos: usize, order: HoldingResponse) {
         unsafe {
             *self.orders_ptr.add(pos) = order;
         }
@@ -191,7 +193,7 @@ impl QueryQueue {
 
     /// ULTRA-FAST dequeue - all pointers cached, no borrows
     #[inline]
-    pub fn dequeue(&mut self) -> Result<Option<Query>, QueueError> {
+    pub fn dequeue(&mut self) -> Result<Option<HoldingResponse>, QueueError> {
         let header = self.header_mut();
 
         let producer_head = header.producer_head.load(Ordering::Acquire);
@@ -203,7 +205,7 @@ impl QueryQueue {
 
         let pos = (consumer_tail % QUEUE_CAPACITY as u64) as usize;
         std::sync::atomic::fence(Ordering::Acquire);
-        let order = self.get_order(pos);
+        let order = self.get_holding_response(pos);
 
         header
             .consumer_tail
@@ -212,7 +214,7 @@ impl QueryQueue {
         Ok(Some(order))
     }
 
-    pub fn enqueue(&mut self, order: Query) -> Result<(), QueueError> {
+    pub fn enqueue(&mut self, query_response: HoldingResponse) -> Result<(), QueueError> {
         let header = self.header_mut();
 
         let consumer_tail = header.consumer_tail.load(Ordering::Acquire);
@@ -227,7 +229,7 @@ impl QueryQueue {
         }
 
         let pos = (producer_head % QUEUE_CAPACITY as u64) as usize;
-        self.set_order(pos, order);
+        self.set_holding_response(pos, query_response);
 
         header.producer_head.store(next_head, Ordering::Release);
 
@@ -251,7 +253,7 @@ impl QueryQueue {
             .map_err(|e| QueueError::Flush(e.to_string()))
     }
 
-    pub fn dequeue_spin(&mut self, max_spins: usize) -> Result<Option<Query>, QueueError> {
+    pub fn dequeue_spin(&mut self, max_spins: usize) -> Result<Option<HoldingResponse>, QueueError> {
         for _ in 0..max_spins {
             match self.dequeue()? {
                 Some(order) => return Ok(Some(order)),
@@ -262,7 +264,7 @@ impl QueryQueue {
     }
 }
 
-impl Drop for QueryQueue {
+impl Drop for HoldingResQueue {
     fn drop(&mut self) {
         // Flush before closing
         let _ = self.mmap.flush();
@@ -312,6 +314,6 @@ impl std::fmt::Display for QueueError {
 impl std::error::Error for QueueError {}
 
 // Thread-safe: Queue can be sent between threads
-unsafe impl Send for QueryQueue {}
+unsafe impl Send for HoldingResQueue {}
 // Not Sync: only one thread should access at a time (SPSC model)
 
