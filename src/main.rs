@@ -26,10 +26,10 @@ fn main(){
     // threads can indivisually open the queues (SPSC)
     std::fs::create_dir_all("/tmp/trading").expect("failed to init director");
 
-    let _ = IncomingOrderQueue::create("/tmp/trading/IncomingOrders").expect("failed to create queue");
+    let _ = IncomingOrderQueue::create("/tmp/trading/IncomingOrdersForMe").expect("failed to create queue");
     let _ = CancelOrderQueue::create("/tmp/trading/CancelOrders").expect("failed to create queue");
     let _ = OrderEventQueue::create("/tmp/trading/OrderEvents").expect("failed to create queue");
-    let _ = QueryQueue::create("/tmp/trading/queries").expect("failed to create queue");
+    let _ = QueryQueue::create("/tmp/trading/Queries").expect("failed to create queue");
     let _ = HoldingResQueue::create("/tmp/trading/HoldingsResponse").expect("failed to create queue");
     let _ = BalanceResQueue::create("/tmp/trading/BalanceResponse").expect("failed to open queue");
 
