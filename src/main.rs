@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use rust_orderbook_2::balance_manager::my_balance_manager2::{ MyBalanceManager2};
-use rust_orderbook_2::balance_manager::types::{BalanceQuery , HoldingsQuery};
 use rust_orderbook_2::orderbook::order::Order;
 use rust_orderbook_2::orderbook::types::Fills;
 use rust_orderbook_2::orderbook::{types::Event};
@@ -68,9 +67,8 @@ fn main(){
     let (fill_sender , fill_receiver) = crossbeam::channel::bounded::<Fills>(1024);
     let (bm_to_engine_sender , bm_to_engine_reciver) = crossbeam::channel::bounded::<Order>(1024);
     let (shm_to_bm_sender , shm_to_bm_receiver) = crossbeam::channel::bounded::<Order>(1024);
-    let (_grpc_balance_query_sender , grpc_balance_query_recv)= crossbeam::channel::bounded::<BalanceQuery>(1024);
-    let (_grpc_holding_query_sender , grpc_holding_query_recv)= crossbeam::channel::bounded::<HoldingsQuery>(1024);
-    // the querysenders will be sent to the grpc serivce that will be created , for each querry a oneshott channel will be initiaised 
+
+    
     
     // clones for passing to different parts 
 
@@ -89,8 +87,6 @@ fn main(){
     let shm_to_bm_receiver_clone = shm_to_bm_receiver.clone();
 
 
-    let grpc_balance_query_recv_clone = grpc_balance_query_recv.clone();
-    let grpc_holding_query_recv_clone =  grpc_holding_query_recv.clone();
 
 
 
@@ -123,8 +119,6 @@ fn main(){
             bm_to_engine_sender_clone,
             fill_reciver_clone,
             shm_to_bm_receiver_clone,
-            grpc_balance_query_recv_clone,
-            grpc_holding_query_recv_clone,
             fill_queue_clone_for_bm,
             shm_bm_order_queue_clone_for_bm,
             bm_engine_order_queue_clone_for_bm,
@@ -192,8 +186,7 @@ fn main(){
     drop(bm_to_engine_sender);
     drop(shm_to_bm_receiver);
     drop(shm_to_bm_sender);
-    drop(grpc_balance_query_recv);
-    drop(grpc_holding_query_recv);
+
 
     // AWAITING THE MAIN THREAD FOR INFINITE TIME UNTILL ALL THESE THREADS JOIN 
     for handle in running_engines {

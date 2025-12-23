@@ -38,7 +38,7 @@ pub struct OrderEvents {
 
 
 
-const QUEUE_MAGIC: u32 = 0xDEADBEEF;
+const QUEUE_MAGIC: u32 = 0xEAAAAAAC;
 // reduce size 
 const QUEUE_CAPACITY: usize = 65536;
 const ORDER_SIZE: usize = std::mem::size_of::<OrderEvents>();

@@ -27,7 +27,7 @@ pub struct QueueHeader {
 }
 
 
-const QUEUE_MAGIC: u32 = 0xDEADBEEF;
+const QUEUE_MAGIC: u32 = 0xCECAEAAC;
 // reduce size 
 const QUEUE_CAPACITY: usize = 65536;
 const ORDER_SIZE: usize = std::mem::size_of::<HoldingResponse>();

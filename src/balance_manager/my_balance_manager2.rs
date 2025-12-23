@@ -20,7 +20,6 @@ use dashmap::DashMap;
 use crossbeam::channel::{Receiver, Sender};
 use crate::orderbook::types::{BalanceManagerError, Fills, };
 use crate::orderbook::order::{ Order, Side};
-use crate::balance_manager::types::{BalanceQuery , HoldingsQuery};
 use crate::shm::event_queue::OrderEvents;
 use crate::shm::query_queue::{self, QueryQueue, QueryType};
 use crate::shm::balance_response_queue::{self, BalanceResQueue, BalanceResponse};
@@ -37,14 +36,16 @@ pub struct UserBalance {
     pub reserved_balance: u64,         
     pub total_traded_today: u64,  
     pub order_count_today: u64,   
-}// 48 bytes alligned to 64 
+    _pad: [u8; 24],
+}// 40 bytes alligned to 64 
 impl Default for UserBalance{
     fn default()->Self{
         UserBalance { user_id: 0,
             available_balance: DEFAULT_BALANCE, 
             reserved_balance: 0,
             total_traded_today: 0, 
-            order_count_today: 0
+            order_count_today: 0,
+            _pad: [0; 24],
             }
     }
 }
@@ -98,8 +99,6 @@ pub struct MyBalanceManager2{
     pub fill_recv : crossbeam::channel::Receiver<Fills>,
     pub order_receiver : crossbeam::channel::Receiver<Order>,
     pub state : BalanceState,
-    pub balance_query_receiver: Receiver<BalanceQuery>,
-    pub holdings_query_receiver: Receiver<HoldingsQuery>,
     pub fill_queue : Arc<SpscQueue<Fills>>,
     pub shm_bm_order_queue : Arc<SpscQueue<Order>>,
     pub bm_engine_order_queue : Arc<SpscQueue<Order>>,
@@ -110,7 +109,7 @@ pub struct MyBalanceManager2{
 }
 
 impl MyBalanceManager2{
-    pub fn new(order_sender : Sender<Order> , fill_recv :Receiver<Fills> , order_receiver : Receiver<Order> , balance_query_receiver: Receiver<BalanceQuery>, holdings_query_receiver: Receiver<HoldingsQuery> , fill_queue : Arc<SpscQueue<Fills>>,shm_bm_order_queue : Arc<SpscQueue<Order>>,bm_engine_order_queue : Arc<SpscQueue<Order>> , bm_writer_order_event_queue : Arc<SpscQueue<OrderEvents>>)->Self{
+    pub fn new(order_sender : Sender<Order> , fill_recv :Receiver<Fills> , order_receiver : Receiver<Order>  , fill_queue : Arc<SpscQueue<Fills>>,shm_bm_order_queue : Arc<SpscQueue<Order>>,bm_engine_order_queue : Arc<SpscQueue<Order>> , bm_writer_order_event_queue : Arc<SpscQueue<OrderEvents>>)->Self{
         let query_queue = QueryQueue::open("/tmp/trading/queries");
         let holding_response_queue = HoldingResQueue::open("/tmp/trading/HoldingsResponse");
         let balance_response_queue = BalanceResQueue::open("/tmp/trading/BalanceResponse");
@@ -127,7 +126,7 @@ impl MyBalanceManager2{
             eprintln!("{:?}" , holding_response_queue)
         }
         let balance_state = BalanceState::new();
-        Self { order_sender, fill_recv, order_receiver, state: balance_state , balance_query_receiver , holdings_query_receiver
+        Self { order_sender, fill_recv, order_receiver, state: balance_state
         ,fill_queue , shm_bm_order_queue , bm_engine_order_queue , bm_writer_order_event_queue , query_queue: query_queue.unwrap() , holding_response_queue: holding_response_queue.unwrap() , balance_response_queue : balance_response_queue.unwrap()}
     }
     pub fn get_user_index(&self , user_id : u64 )->Result<u32 , BalanceManagerError>{
@@ -331,7 +330,11 @@ pub fn run_balance_manager(&mut self) {
                         if user_index.is_ok(){
                             let user_balance = self.get_user_balance_copy_for_query(user_index.unwrap());
                             let _ = self.balance_response_queue.enqueue(BalanceResponse{
-                                query_id : rec_query.query_id , user_id : rec_query.user_id , response_type : 0 , response : user_balance
+                                query_id : rec_query.query_id , 
+                                user_id : rec_query.user_id , 
+                                response_type : 0 , 
+                                response : user_balance , 
+                                _pad : [0;47],
                             });
                         
                         }

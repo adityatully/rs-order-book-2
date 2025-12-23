@@ -31,7 +31,7 @@ pub enum QueryType{
     GetHoldings ,
     AddUser 
 }
-const QUEUE_MAGIC: u32 = 0xDEADBEEF;
+const QUEUE_MAGIC: u32 = 0x51554552;
 // reduce size 
 const QUEUE_CAPACITY: usize = 65536;
 const ORDER_SIZE: usize = std::mem::size_of::<Query>();

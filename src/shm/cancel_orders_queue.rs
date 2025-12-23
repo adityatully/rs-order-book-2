@@ -16,7 +16,7 @@ pub struct QueueHeader {
     capacity: AtomicU32,      // offset 132
 }
 
-const QUEUE_MAGIC: u32 = 0xDEADBEEF;
+const QUEUE_MAGIC: u32 = 0xCACECE;
 // reduce size 
 const QUEUE_CAPACITY: usize = 65536;
 const ORDER_SIZE: usize = std::mem::size_of::<OrderToBeCanceled>();
