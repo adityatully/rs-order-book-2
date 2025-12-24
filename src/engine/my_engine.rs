@@ -27,11 +27,6 @@ pub struct MyEngine{
     pub books : HashMap<u32 , OrderBook>,
     pub test_orderbook : OrderBook,
 
-    pub bm_engine_order_queue : Arc<SpscQueue<Order>>,
-    pub fill_queue : Arc<SpscQueue<Fills>>,
-    pub event_queue : Arc<SpscQueue<Event>>,
-
-
     pub cancel_order_queue : CancelOrderQueue,
 
 
@@ -41,14 +36,13 @@ pub struct MyEngine{
 }
 
 impl MyEngine{
-    pub fn new( engine_id : usize , bm_engine_order_queue : Arc<SpscQueue<Order>>, 
-        fill_queue : Arc<SpscQueue<Fills>>,event_queue : Arc<SpscQueue<Event>>,
+    pub fn new( engine_id : usize ,
         bm_order_reciver_try : Consumer<Order>,
         sending_fills_to_bm_try : Producer<Fills>,
         sending_event_to_publisher_try : Producer<Event>,
-        )->Option<Self> {
 
-            let cancel_orders_queue = CancelOrderQueue::open("/tmp/trading/CancelOrders");
+        )->Option<Self> {
+            let cancel_orders_queue = CancelOrderQueue::open("/tmp/CancelOrders");
             match cancel_orders_queue {
                 Ok(queue)=>{
                     Some(Self{
@@ -56,16 +50,12 @@ impl MyEngine{
                         book_count : 0 ,
                         books : HashMap::new(),
                         test_orderbook : OrderBook::new(100),
-                        bm_engine_order_queue,
-                        fill_queue,
-                        event_queue , 
                         cancel_order_queue : queue , 
                         bm_order_reciver_try , 
                         sending_fills_to_bm_try , 
                         sending_event_to_publisher_try 
                     } )
                 }
-
                 Err(_)=>{
                     eprint!("error in init engine because of cancel order queue");
                     None
@@ -73,7 +63,6 @@ impl MyEngine{
             }
             
     }
-    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn run_engine(&mut self ){
         eprintln!("[ENGINE] Started (crossbeam batched mode) on core 1");
 
@@ -81,16 +70,13 @@ impl MyEngine{
         let mut last_log = std::time::Instant::now();
         loop {
             // new queue use 
-           
             if let Some(mut recieved_order) = self.bm_order_reciver_try.try_pop(){
-                //println!("got the order from bm");
                 count += 1;
                 if let Some(order_book) = self.get_book_mut(recieved_order.symbol){
                     let order_book_symbol = order_book.symbol;
                     let order_book_last_price = order_book.last_trade_price.load(Ordering::Relaxed);
                     let order_book_depth = order_book.get_depth();
                     let events = match recieved_order.order_type {
-                        
                         0 => order_book.match_market_order(&mut recieved_order),
                         1 =>{
                             // limit order 
@@ -107,8 +93,7 @@ impl MyEngine{
                     };
                    
                     if let Ok(match_result)=events{
-                        //println!("sending fills to bm");
-                        //println!("{:?}" , match_result);
+                        // direct push cant drop
                         let _ = self.sending_fills_to_bm_try.push(match_result.fills.clone());
                         let now_utc = Utc::now();
                     
@@ -121,7 +106,9 @@ impl MyEngine{
                             match_result
                         );
                         //println!("sending events to publisher");
-                        let _ = self.sending_event_to_publisher_try.push(Event::new(market_update));
+                        // engine is the bottle neck , push try psuh dosent matter 
+                         self.sending_event_to_publisher_try.try_push(Event::new(market_update));
+                            
                        // println!("sedning events to publisher ");
                     }
                     
@@ -183,8 +170,6 @@ impl Engine for MyEngine{
             self.book_count = self.book_count.saturating_sub(1);
         }
     }
-    
-
 }
 
 
@@ -193,7 +178,6 @@ pub struct STEngine{
     pub book_count : usize, 
     pub books : HashMap<u32 , OrderBook>,
 }
-
 impl STEngine{
     pub fn new( engine_id : usize )->Self {
         // initialise the publisher channel here 

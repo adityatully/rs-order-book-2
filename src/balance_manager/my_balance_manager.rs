@@ -251,17 +251,14 @@ impl MyBalanceManager{
                 Ok(recieved_order)=>{
                     //println!("received order ");
                     //println!("starting to reserve funds");
-//
                     //println!("\n>>> BM received: order_id={} user_id={} symbol={} qty={} price={}", 
                     //    recieved_order.order_id,
                     //    recieved_order.user_id, 
                     //    recieved_order.symbol,
                     //    recieved_order.shares_qty,
                     //    recieved_order.price);
-                    
                     match self.check_and_lock_funds(recieved_order) {
                         Ok(_)=>{
-                            //println!("sendint to engine");
                             match self.order_sender.send(recieved_order)  {
                                 Ok(_)=>{} , 
                                 Err(_)=>{}

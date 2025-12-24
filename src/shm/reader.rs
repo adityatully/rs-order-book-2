@@ -1,33 +1,27 @@
 
-use std::sync::Arc;
+
 use bounded_spsc_queue::Producer;
 
 // SHM reader , passed ordrs to the balance manager 
 use crate::{orderbook::order::ShmOrder, shm::queue::IncomingOrderQueue};
 use crate::orderbook::order::Side;
-//use crossbeam::queue::ArrayQueue;
 use crate::orderbook::order::{Order };
-use crate::singlepsinglecq::my_queue::SpscQueue;
-
 pub struct ShmReader {
     pub queue: IncomingOrderQueue,  
-    pub shm_bm_order_queue : Arc<SpscQueue<Order>>,
     pub order_batch : Vec<ShmOrder>,
     pub shm_bm_order_queue_try : Producer<Order>,
 }
-
 impl ShmReader {
     /// Returns None if queue can't be opened
-    pub fn new(shm_bm_order_queue : Arc<SpscQueue<Order>> , shm_bm_order_queue_try : Producer<Order>) -> Option<Self> {
+    pub fn new( shm_bm_order_queue_try : Producer<Order>) -> Option<Self> {
         match IncomingOrderQueue::open("/tmp/IncomingOrders") {
-            Ok(queue) => Some(Self { queue , shm_bm_order_queue  , order_batch : Vec::with_capacity(1000) , shm_bm_order_queue_try}),
+            Ok(queue) => Some(Self { queue   , order_batch : Vec::with_capacity(1000) , shm_bm_order_queue_try}),
             Err(e) => {
                 eprintln!("[SHM Reader] Failed to open queue: {:?}", e);
                 None
             }
         }
     }
-    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn run_reader(&mut self) {
         eprintln!("[SHM Reader] Starting on Core 2");
         
@@ -39,7 +33,6 @@ impl ShmReader {
             for _ in 0..1000{
                 match self.queue.dequeue(){
                     Ok(Some(shm_order))=>{
-                        
                         self.order_batch.push(shm_order);
                     }
                     Ok(None)=>{
@@ -74,26 +67,8 @@ impl ShmReader {
                     shm_order.timestamp,
                     shm_order.symbol,
                 );
-                // old code 
-                //match self.shm_bm_order_queue.push(order) {
-                //    Ok(_)=>{}
-                //    Err(order) => {
-                //        eprintln!(
-                //            "[SHM Reader] Channel full, dropping order: {:?} ; queue_ptr={:p} len={} cap={}",
-                //            order,
-                //            Arc::as_ptr(&self.shm_bm_order_queue),
-                //            self.shm_bm_order_queue.len(),
-                //            self.shm_bm_order_queue.capacity()
-                //          );
-                //        
-                //    }
-                //}
-
-                // new code try
-                //println!("sending to bm");
-                 self.shm_bm_order_queue_try.push(order);
-                 //println!("sent to bm ");
-
+                // push -> blocking method , cant drop orders 
+                self.shm_bm_order_queue_try.push(order);
                 count += 1;
 
             }// Metrics (every 2 seconds)
@@ -106,7 +81,6 @@ impl ShmReader {
         }
     }
 }
-
 
 pub struct StShmReader{
     pub queue: IncomingOrderQueue,

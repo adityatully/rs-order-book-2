@@ -9,10 +9,7 @@
 // read from the SHM queue for the new order 
 // The balanaces and holdings will be in a shared state for the grpc server and the balance manager 
 // avalable means free balance or holdings that can be reserved 
-
-use std::sync::Arc;
 use bounded_spsc_queue::{Consumer, Producer};
-//use crossbeam::queue::ArrayQueue;
 use crossbeam_utils::Backoff;
 use crate::shm::holdings_response_queue::{HoldingResQueue, HoldingResponse};
 use dashmap::DashMap;
@@ -21,8 +18,7 @@ use crate::orderbook::order::{ Order, Side};
 use crate::shm::event_queue::OrderEvents;
 use crate::shm::query_queue::{ QueryQueue, QueryType};
 use crate::shm::balance_response_queue::{ BalanceResQueue, BalanceResponse};
-use crate::singlepsinglecq::my_queue::SpscQueue;
-const MAX_USERS: usize = 100; // pre allocating for a max of 100 users 
+const MAX_USERS: usize = 100; 
 const MAX_SYMBOLS : usize = 100 ; 
 const DEFAULT_BALANCE : u64 = 10000;
 #[repr(C)]
@@ -95,17 +91,10 @@ impl Default for BalanceState {
 pub struct MyBalanceManager2{
     pub state : BalanceState,
 
-    pub fill_queue : Arc<SpscQueue<Fills>>,
-    pub shm_bm_order_queue : Arc<SpscQueue<Order>>,
-    pub bm_engine_order_queue : Arc<SpscQueue<Order>>,
-    pub bm_writer_order_event_queue : Arc<SpscQueue<OrderEvents>>,
-
-
 
     pub query_queue : QueryQueue,
     pub balance_response_queue : BalanceResQueue,
     pub holding_response_queue : HoldingResQueue,
-
 
     pub fill_recv_from_engine_try : Consumer<Fills>,
     pub order_recv_from_shm_try : Consumer<Order>,
@@ -114,10 +103,7 @@ pub struct MyBalanceManager2{
 }
 
 impl MyBalanceManager2{
-    pub fn new(fill_queue : Arc<SpscQueue<Fills>>,shm_bm_order_queue : Arc<SpscQueue<Order>>,
-        bm_engine_order_queue : Arc<SpscQueue<Order>> , 
-        bm_writer_order_event_queue : Arc<SpscQueue<OrderEvents>>,
-        fill_recv_from_engine_try : Consumer<Fills>,
+    pub fn new(fill_recv_from_engine_try : Consumer<Fills>,
         order_recv_from_shm_try : Consumer<Order>,
         order_send_to_engine_try : Producer<Order>,
         events_to_wrriter_try : Producer<OrderEvents>
@@ -138,10 +124,7 @@ impl MyBalanceManager2{
             eprintln!("{:?}" , holding_response_queue)
         }
         let balance_state = BalanceState::new();
-        Self { state: balance_state
-        ,fill_queue , shm_bm_order_queue ,
-         bm_engine_order_queue ,
-         bm_writer_order_event_queue , 
+        Self { state: balance_state,
          query_queue: query_queue.unwrap() , 
          holding_response_queue: holding_response_queue.unwrap() , 
          balance_response_queue : balance_response_queue.unwrap() , 
@@ -175,10 +158,6 @@ impl MyBalanceManager2{
         // currently for limit orders , we get an order 
         // we have user id , symbol , side , holfings 
         let user_index = self.get_user_index(order.user_id)?;   // fatal error , return immidieately to the function who is calling
-        //println!("user exists");
-        //println!("user balance ");
-        //println!("user holdings");
-        
         match order.side {
             Side::Ask =>{
                 let holdings = self.get_user_holdings(user_index);
@@ -272,8 +251,6 @@ impl MyBalanceManager2{
         Ok(())
     }
 
-    #[hotpath::measure]
-    #[hotpath::measure]
 pub fn run_balance_manager(&mut self) {
     const BATCH_ORDERS: usize = 1000;
 
@@ -289,8 +266,6 @@ pub fn run_balance_manager(&mut self) {
     let  backoff = Backoff::new();
 
     loop {
-
-
         // 1) Drain all fills first (highest priority) — drain loop (fast)
         while let Some(recieved_fill) = self.fill_recv_from_engine_try.try_pop() {
             //println!("recvied fills");
@@ -304,31 +279,22 @@ pub fn run_balance_manager(&mut self) {
         let mut processed = 0usize;
         while processed < BATCH_ORDERS {
             match self.order_recv_from_shm_try.try_pop() {
-
                 Some(recieved_order) => {
-                    //println!("got the order from reader");
+                    
                     let lock_start = std::time::Instant::now();
                     match self.check_and_lock_funds(recieved_order) {
                         
                         Ok(()) => {
                             //println!("funds locked");
                             lock_funds_time += lock_start.elapsed();
-                            let send_start = std::time::Instant::now();
-                            //if self.order_send_to_engine_try.try_push(recieved_order).is_err() {
-                            //    // engine queue full — record and drop or handle backpressure
-                            //    // one-time log to avoid spam
-                            //    eprintln!("[BM] bm_engine queue full — order dropped or backpressure needed");
-                            //} else {
-                            //    channel_send_time += send_start.elapsed();
-                            //}
-                           //println!("sending to enfine ");
-                            self.order_send_to_engine_try.try_push(recieved_order);
+                            // push not try push 
+                            self.order_send_to_engine_try.push(recieved_order);
                             count += 1;
                         }
                         Err(_) => {
                             // insufficient funds — drop or log minimal
                             //eprintln!("[BM] Insufficient funds: {:?}", e);
-                            let _ = self.events_to_wrriter_try.push(
+                            let _ = self.events_to_wrriter_try.try_push(
                                 OrderEvents { 
                                     user_id: recieved_order.user_id,
                                     order_id: recieved_order.order_id,
@@ -384,51 +350,8 @@ pub fn run_balance_manager(&mut self) {
 
             }
         }
-        // 3) If nothing processed this iteration, backoff to avoid 100% busy spin
-        if processed == 0 {
-            if self.fill_queue.is_empty() && self.shm_bm_order_queue.is_empty() {
-                backoff.snooze(); // exponential backoff with pause/yield
-            } else {
-                // There is some work but was not processed due to conditions; do a light hint
-                std::hint::spin_loop();
-            }
-        }
-
-        // 4) Logs (2s)
-        if last_log.elapsed().as_secs() >= 2 {
-            let total_time = last_log.elapsed();
-            let rate = count as f64 / total_time.as_secs_f64();
-            eprintln!("\n[Balance Manager] Report:");
-            eprintln!("  Throughput:     {:.3} orders/sec ({:.3}M)", rate, rate / 1_000_000.0);
-            eprintln!("  channel_send:   {:.6}s", channel_send_time.as_secs_f64());
-            eprintln!("  lock_funds:     {:.6}s", lock_funds_time.as_secs_f64());
-            eprintln!("  update_balance: {:.6}s", update_balance_time.as_secs_f64());
-
-            // queue lengths & pointers
-            eprintln!("  shm_bm_order_queue ptr={:p} len={} cap={}",
-                Arc::as_ptr(&self.shm_bm_order_queue),
-                self.shm_bm_order_queue.len(),
-                self.shm_bm_order_queue.capacity());
-            eprintln!("  bm_engine_order_queue ptr={:p} len={} cap={}",
-                Arc::as_ptr(&self.bm_engine_order_queue),
-                self.bm_engine_order_queue.len(),
-                self.bm_engine_order_queue.capacity());
-            eprintln!("  fill_queue ptr={:p} len={} cap={}",
-                Arc::as_ptr(&self.fill_queue),
-                self.fill_queue.len(),
-                self.fill_queue.capacity());
-
-            // reset counters
-            count = 0;
-            _channel_recv_time = std::time::Duration::ZERO;
-            channel_send_time = std::time::Duration::ZERO;
-            lock_funds_time = std::time::Duration::ZERO;
-            update_balance_time = std::time::Duration::ZERO;
-            last_log = std::time::Instant::now();
-        }
     }
 }
-
 
     pub fn add_test_users(&mut self ){
         self.state.user_id_to_index.insert(10, 1);
@@ -448,17 +371,17 @@ pub fn run_balance_manager(&mut self) {
         self.state.balances[1].user_id =10;
         self.state.balances[1].available_balance= HIGH_BALANCE;
         
-        // Add user 20 (seller)
+       
         self.state.user_id_to_index.insert(20, 2);
         self.state.balances[2].user_id=20;
         self.state.balances[2].available_balance = HIGH_BALANCE;
         
-        // Give seller holdings for symbol 0
+       
         for symbol in 0..MAX_SYMBOLS {
             self.state.holdings[2].available_holdings[symbol] = HIGH_HOLDINGS;
         }
         
-        // ✅ VERIFY INITIALIZATION
+       
         let user10_bal = self.state.balances[1].available_balance;
         let user20_bal = self.state.balances[2].available_balance;
         let user20_holdings = self.state.holdings[2].available_holdings[0];

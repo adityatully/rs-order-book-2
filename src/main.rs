@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::thread::JoinHandle;
 use rust_orderbook_2::balance_manager::my_balance_manager2::{ MyBalanceManager2};
 use rust_orderbook_2::orderbook::order::Order;
@@ -16,7 +15,6 @@ use rust_orderbook_2::shm::query_queue::QueryQueue;
 use rust_orderbook_2::shm::balance_response_queue::{BalanceResQueue};
 use rust_orderbook_2::shm::reader::ShmReader;
 use rust_orderbook_2::shm::writer::ShmWriter;
-use rust_orderbook_2::singlepsinglecq::my_queue::SpscQueue;
 use bounded_spsc_queue;
 
 #[hotpath::main]
@@ -31,38 +29,7 @@ fn main(){
     let _ = BalanceResQueue::create("/tmp/BalanceResponse").expect("failed to open queue");
 
 
-    // my impl queues 
-    let fill_queue = Arc::new(SpscQueue::<Fills>::new(32768));
-    let event_queue = Arc::new(SpscQueue::<Event>::new(32768));
-    let bm_engine_order_queue = Arc::new(SpscQueue::<Order>::new(32768));
-    let shm_bm_order_queue = Arc::new(SpscQueue::<Order>::new(32768));
-    let bm_writter_order_event_queue = Arc::new(SpscQueue::<OrderEvents>::new(32768));
-    let publisher_writer_order_event_queue = Arc::new(SpscQueue::<OrderEvents>::new(32768));
-
-
-    //Queue clones (sender , reciver handeles)
-    let fill_queue_clone_for_engine = Arc::clone(&fill_queue);
-    let fill_queue_clone_for_bm = Arc::clone(&fill_queue);
-
-    let event_queue_clone_for_engine = Arc::clone(&event_queue);
-    let event_queue_clone_for_publisher = Arc::clone(&event_queue);
-
-    let bm_engine_order_queue_clone_for_engine = Arc::clone(&bm_engine_order_queue);
-    let bm_engine_order_queue_clone_for_bm = Arc::clone(&bm_engine_order_queue);
-
-    let shm_bm_order_queue_clone_for_reader = Arc::clone(&shm_bm_order_queue);
-    let shm_bm_order_queue_clone_for_bm = Arc::clone(&shm_bm_order_queue);
-
-    let bm_writter_order_event_queue_clone_for_bm = Arc::clone(&bm_writter_order_event_queue);
-    let bm_writter_order_event_queue_clone_for_writter = Arc::clone(&bm_writter_order_event_queue);
-
-    let publisher_writer_order_event_queue_clone_for_pub = Arc::clone(&publisher_writer_order_event_queue);
-    let publisher_writer_order_event_queue_clone_for_writter = Arc::clone(&publisher_writer_order_event_queue);
-
-    // SHM READER ONLY REQUIRES AN ORDER SENDER 
-
     
-
     let (fill_producer_engine , fill_consumer_bm ) = bounded_spsc_queue::make::<Fills>(32768);
     let (event_producer_engine , event_consumer_publisher) = bounded_spsc_queue::make::<Event>(32768);
     let (order_producer_bm , order_consumer_engine) = bounded_spsc_queue::make::<Order>(32768);
@@ -77,7 +44,7 @@ fn main(){
 
        
         let mut my_shm_reader = ShmReader::new(
-            shm_bm_order_queue_clone_for_reader , 
+              
             order_producer_shm_reader
         ).unwrap();
 
@@ -90,10 +57,6 @@ fn main(){
         core_affinity::set_for_current(core_affinity::CoreId { id: 6 });
 
         let mut my_balance_manager = MyBalanceManager2::new(
-            fill_queue_clone_for_bm,
-            shm_bm_order_queue_clone_for_bm,
-            bm_engine_order_queue_clone_for_bm,
-            bm_writter_order_event_queue_clone_for_bm,
             fill_consumer_bm , 
             order_consumer_bm,
             order_producer_bm,
@@ -112,9 +75,6 @@ fn main(){
 
         let mut engine = MyEngine::new(
             0,
-            bm_engine_order_queue_clone_for_engine,
-            fill_queue_clone_for_engine,
-            event_queue_clone_for_engine ,
             order_consumer_engine,
             fill_producer_engine,
             event_producer_engine
@@ -136,9 +96,9 @@ fn main(){
         core_affinity::set_for_current(core_affinity::CoreId { id: 5 });
 
         let mut my_publisher = EventPublisher::new(
-            event_queue_clone_for_publisher,
+            
             pubsub_connection.unwrap() , 
-            publisher_writer_order_event_queue_clone_for_pub,
+            
             event_consumer_publisher,
             order_event_producer_publisher
         );
@@ -149,8 +109,6 @@ fn main(){
     let writter_handle = std::thread::spawn(move|| {
         core_affinity::set_for_current(core_affinity::CoreId { id: 7 });
         let  shm_writter = ShmWriter::new(
-            bm_writter_order_event_queue_clone_for_writter,
-            publisher_writer_order_event_queue_clone_for_writter,
             order_event_consumer_writter_from_bm,
             order_event_consumer_writter_from_publisher
         );
