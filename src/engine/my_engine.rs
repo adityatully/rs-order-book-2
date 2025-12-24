@@ -2,10 +2,9 @@ use chrono::prelude::*;
 use std::collections::HashMap;
 use crate::orderbook::order::{Order, Side};
 use crate::orderbook::types::{Event, Fills, MarketUpdateAfterTrade, MatchResult} ;
-use crate::orderbook::order_book::{self, OrderBook};
-use crate::shm::cancel_orders_queue::{self, CancelOrderQueue};
-use crossbeam::channel::{Sender , Receiver};
-use crossbeam::queue::ArrayQueue;
+use crate::orderbook::order_book::{ OrderBook};
+use crate::shm::cancel_orders_queue::{ CancelOrderQueue};
+//use crossbeam::queue::ArrayQueue;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use crate::singlepsinglecq::my_queue::SpscQueue;
@@ -25,10 +24,7 @@ pub struct MyEngine{
     pub engine_id :usize ,
     pub book_count : usize, 
     pub books : HashMap<u32 , OrderBook>,
-    pub event_publisher : Sender<Event>,
     pub test_orderbook : OrderBook,
-    pub sender_to_balance_manager : Sender<Fills>,
-    pub order_receiver :Receiver<Order>,
     pub bm_engine_order_queue : Arc<SpscQueue<Order>>,
     pub fill_queue : Arc<SpscQueue<Fills>>,
     pub event_queue : Arc<SpscQueue<Event>>,
@@ -36,7 +32,7 @@ pub struct MyEngine{
 }
 
 impl MyEngine{
-    pub fn new(event_publisher : Sender<Event>, engine_id : usize , sender_to_balance_manager: Sender<Fills> , order_receiver :Receiver<Order> , bm_engine_order_queue : Arc<SpscQueue<Order>>, fill_queue : Arc<SpscQueue<Fills>>,event_queue : Arc<SpscQueue<Event>>)->Option<Self> {
+    pub fn new( engine_id : usize , bm_engine_order_queue : Arc<SpscQueue<Order>>, fill_queue : Arc<SpscQueue<Fills>>,event_queue : Arc<SpscQueue<Event>>)->Option<Self> {
 
             let cancel_orders_queue = CancelOrderQueue::open("/tmp/trading/CancelOrders");
             match cancel_orders_queue {
@@ -45,10 +41,7 @@ impl MyEngine{
                         engine_id,
                         book_count : 0 ,
                         books : HashMap::new(),
-                        event_publisher  ,
                         test_orderbook : OrderBook::new(100),
-                        sender_to_balance_manager , 
-                        order_receiver,
                         bm_engine_order_queue,
                         fill_queue,
                         event_queue , 
@@ -71,29 +64,6 @@ impl MyEngine{
         let mut last_log = std::time::Instant::now();
         loop {
             
-            //match self.order_receiver.recv() {
-            //    Ok(mut recieved_order)=>{
-            //        //println!("recived order to engine ");
-            //        if let Some(order_book) = self.get_book_mut(recieved_order.symbol){
-            //            let events = match recieved_order.side {
-            //                Side::Bid => order_book.match_bid(&mut recieved_order),
-            //                Side::Ask => order_book.match_ask(&mut recieved_order)
-            //            };
-            //           // println!("order matched events created ");
-            //            if let Ok(match_result)=events{
-            //                let _ = self.sender_to_balance_manager.send(match_result.fills.clone());
-            //             //   println!("sending fills to balance manager ");
-            //                let _ = self.event_publisher.send(Event::MatchResult(match_result));
-            //               // println!("sedning events to publisher ");
-            //            }
-            //            count += 1;
-            //        }
-            //    }
-            //    Err(_)=>{
-//
-            //    }
-            //}
-
             if let Some(mut recieved_order) = self.bm_engine_order_queue.pop(){
                 
                 if let Some(order_book) = self.get_book_mut(recieved_order.symbol){
@@ -115,11 +85,11 @@ impl MyEngine{
                             return; 
                         }
                     };
-                   // println!("order matched events created ");
+                  
                     if let Ok(match_result)=events{
                         let _ = self.fill_queue.push(match_result.fills.clone());
                         let now_utc = Utc::now();
-                     //   println!("sending fills to balance manager ");
+                    
                         let market_update = MarketUpdateAfterTrade::new(
                             order_book_symbol, 
                             order_book_last_price,
@@ -133,7 +103,7 @@ impl MyEngine{
                     }
                     count += 1;
                 }
-            }
+            }    
             match self.cancel_order_queue.dequeue(){
                 Ok(Some(order_to_be_canceled))=>{
                     if let Some(order_book) = self.books.get_mut(&order_to_be_canceled.symbol){
@@ -148,9 +118,9 @@ impl MyEngine{
                     eprint!("cancel queue erorr 3")
                 }
             }
-            // spin loop 
-            //else{
-            //    std::hint::spin_loop();
+             //spin loop 
+            ////else{
+            ////    std::hint::spin_loop();
             //}
 
             if last_log.elapsed().as_secs() >= 2 {

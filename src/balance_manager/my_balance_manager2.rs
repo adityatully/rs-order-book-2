@@ -11,18 +11,15 @@
 // avalable means free balance or holdings that can be reserved 
 
 use std::sync::Arc;
-use crossbeam::queue::ArrayQueue;
+//use crossbeam::queue::ArrayQueue;
 use crossbeam_utils::Backoff;
-// no shared state in this approach , 
-
 use crate::shm::holdings_response_queue::{HoldingResQueue, HoldingResponse};
 use dashmap::DashMap;
-use crossbeam::channel::{Receiver, Sender};
 use crate::orderbook::types::{BalanceManagerError, Fills, };
 use crate::orderbook::order::{ Order, Side};
 use crate::shm::event_queue::OrderEvents;
-use crate::shm::query_queue::{self, QueryQueue, QueryType};
-use crate::shm::balance_response_queue::{self, BalanceResQueue, BalanceResponse};
+use crate::shm::query_queue::{ QueryQueue, QueryType};
+use crate::shm::balance_response_queue::{ BalanceResQueue, BalanceResponse};
 use crate::singlepsinglecq::my_queue::SpscQueue;
 const MAX_USERS: usize = 100; // pre allocating for a max of 100 users 
 const MAX_SYMBOLS : usize = 100 ; 
@@ -95,9 +92,6 @@ impl Default for BalanceState {
     }
 }
 pub struct MyBalanceManager2{
-    pub order_sender : crossbeam::channel::Sender<Order>,
-    pub fill_recv : crossbeam::channel::Receiver<Fills>,
-    pub order_receiver : crossbeam::channel::Receiver<Order>,
     pub state : BalanceState,
     pub fill_queue : Arc<SpscQueue<Fills>>,
     pub shm_bm_order_queue : Arc<SpscQueue<Order>>,
@@ -109,10 +103,10 @@ pub struct MyBalanceManager2{
 }
 
 impl MyBalanceManager2{
-    pub fn new(order_sender : Sender<Order> , fill_recv :Receiver<Fills> , order_receiver : Receiver<Order>  , fill_queue : Arc<SpscQueue<Fills>>,shm_bm_order_queue : Arc<SpscQueue<Order>>,bm_engine_order_queue : Arc<SpscQueue<Order>> , bm_writer_order_event_queue : Arc<SpscQueue<OrderEvents>>)->Self{
-        let query_queue = QueryQueue::open("/tmp/trading/queries");
-        let holding_response_queue = HoldingResQueue::open("/tmp/trading/HoldingsResponse");
-        let balance_response_queue = BalanceResQueue::open("/tmp/trading/BalanceResponse");
+    pub fn new(fill_queue : Arc<SpscQueue<Fills>>,shm_bm_order_queue : Arc<SpscQueue<Order>>,bm_engine_order_queue : Arc<SpscQueue<Order>> , bm_writer_order_event_queue : Arc<SpscQueue<OrderEvents>>)->Self{
+        let query_queue = QueryQueue::open("/tmp/Queries");
+        let holding_response_queue = HoldingResQueue::open("/tmp/HoldingsResponse");
+        let balance_response_queue = BalanceResQueue::open("/tmp/BalanceResponse");
         if query_queue.is_err(){
             eprintln!("query quque init error in balance manager");
             eprintln!("{:?}" , query_queue)
@@ -126,7 +120,7 @@ impl MyBalanceManager2{
             eprintln!("{:?}" , holding_response_queue)
         }
         let balance_state = BalanceState::new();
-        Self { order_sender, fill_recv, order_receiver, state: balance_state
+        Self { state: balance_state
         ,fill_queue , shm_bm_order_queue , bm_engine_order_queue , bm_writer_order_event_queue , query_queue: query_queue.unwrap() , holding_response_queue: holding_response_queue.unwrap() , balance_response_queue : balance_response_queue.unwrap()}
     }
     pub fn get_user_index(&self , user_id : u64 )->Result<u32 , BalanceManagerError>{
@@ -259,15 +253,15 @@ pub fn run_balance_manager(&mut self) {
 
     let mut count: u64 = 0;
     let mut last_log = std::time::Instant::now();
-    let mut channel_recv_time = std::time::Duration::ZERO;
+    let mut _channel_recv_time = std::time::Duration::ZERO;
     let mut channel_send_time = std::time::Duration::ZERO;
     let mut lock_funds_time = std::time::Duration::ZERO;
     let mut update_balance_time = std::time::Duration::ZERO;
 
-    let mut backoff = Backoff::new();
+    let  backoff = Backoff::new();
 
     loop {
-        let loop_start = std::time::Instant::now();
+
 
         // 1) Drain all fills first (highest priority) — drain loop (fast)
         while let Some(recieved_fill) = self.fill_queue.pop() {
@@ -391,7 +385,7 @@ pub fn run_balance_manager(&mut self) {
 
             // reset counters
             count = 0;
-            channel_recv_time = std::time::Duration::ZERO;
+            _channel_recv_time = std::time::Duration::ZERO;
             channel_send_time = std::time::Duration::ZERO;
             lock_funds_time = std::time::Duration::ZERO;
             update_balance_time = std::time::Duration::ZERO;

@@ -1,4 +1,3 @@
-// src/bin/single_threaded.rs
 use rust_orderbook_2::{
     balance_manager::my_balance_manager2::STbalanceManager, engine::my_engine::{Engine, STEngine}, orderbook::{order::Order}, shm::reader::StShmReader
 };
@@ -32,7 +31,7 @@ impl TradingCore {
             self.order_batch.clear();
             for _ in 0 ..1000{
                 if let Some(order) = self.shm_reader.receive_order() {
-                    self.order_batch.push(order);                    
+                    self.order_batch.push(order);       
                 }
                 else {
                     break;
@@ -43,7 +42,6 @@ impl TradingCore {
                 match self.balance_manager.check_and_lock_funds(order) {
                     
                     Ok(_) => {
-                        
                         // Process order in engine
                         match self.engine.process_order(order) {
                             Some(match_result) => {
@@ -51,7 +49,9 @@ impl TradingCore {
                                 
                                 if let Err(e) = self.balance_manager
                                     .update_balances_after_trade(match_result.fills)
+
                                 {
+                                    
                                     eprintln!("[Trading Core] Balance update error: {:?}", e);
                                 }
                                 
@@ -93,7 +93,7 @@ impl TradingCore {
 
 #[hotpath::main]
 fn main() {
-    let _ = IncomingOrderQueue::create("/tmp/trading/IncomingOrders");
+    let _ = IncomingOrderQueue::create("/tmp/IncomingOrders");
     let mut trading_system = TradingCore::new();
     trading_system.balance_manager.add_throughput_test_users();
     trading_system.engine.add_book(0);

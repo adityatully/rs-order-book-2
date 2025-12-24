@@ -1,27 +1,23 @@
 
 use std::sync::Arc;
-use crate::shm::queue::QueueError;
 // SHM reader , passed ordrs to the balance manager 
 use crate::{orderbook::order::ShmOrder, shm::queue::IncomingOrderQueue};
 use crate::orderbook::order::Side;
-use crossbeam::queue::ArrayQueue;
-use crossbeam::{channel::Sender};
+//use crossbeam::queue::ArrayQueue;
 use crate::orderbook::order::{Order };
-use crate::orderbook::types::{ShmReaderError};
 use crate::singlepsinglecq::my_queue::SpscQueue;
 
 pub struct ShmReader {
     pub queue: IncomingOrderQueue,  
-    pub order_sender_to_balance_manager: Sender<Order>,
     pub shm_bm_order_queue : Arc<SpscQueue<Order>>,
     pub order_batch : Vec<ShmOrder>
 }
 
 impl ShmReader {
     /// Returns None if queue can't be opened
-    pub fn new(order_sender_to_balance_manager: Sender<Order> , shm_bm_order_queue : Arc<SpscQueue<Order>>) -> Option<Self> {
-        match IncomingOrderQueue::open("/tmp/trading/IncomingOrders") {
-            Ok(queue) => Some(Self { queue, order_sender_to_balance_manager , shm_bm_order_queue  , order_batch : Vec::with_capacity(1000)}),
+    pub fn new(shm_bm_order_queue : Arc<SpscQueue<Order>>) -> Option<Self> {
+        match IncomingOrderQueue::open("/tmp/IncomingOrders") {
+            Ok(queue) => Some(Self { queue , shm_bm_order_queue  , order_batch : Vec::with_capacity(1000)}),
             Err(e) => {
                 eprintln!("[SHM Reader] Failed to open queue: {:?}", e);
                 None
@@ -51,7 +47,6 @@ impl ShmReader {
                     }
                 }
             }
-
             for shm_order in self.order_batch.drain(..){
                 let order_side = match  shm_order.side {
                     0 => {
@@ -74,7 +69,6 @@ impl ShmReader {
                     shm_order.timestamp,
                     shm_order.symbol,
                 );
-
                 match self.shm_bm_order_queue.push(order) {
                     Ok(_)=>{}
                     Err(order) => {
@@ -91,71 +85,7 @@ impl ShmReader {
 
                 count += 1;
 
-            }
-            //match self.queue.dequeue() {
-            //
-            //    Ok(Some(shm_order)) => {
-            //        //println!("=== DEQUEUED order_id={} timestamp={} ===", 
-            //         //   shm_order.order_id, shm_order.timestamp);
-            //        let order_side = match  shm_order.side {
-            //            0 => {
-            //                Side::Bid
-            //            },
-            //            1=>{
-            //                Side::Ask
-            //            }
-            //            _ => {
-            //                continue;
-            //            }
-            //        };
-            //        let order = Order::new(
-            //            shm_order.user_id,
-            //            shm_order.order_id,
-            //            order_side,
-            //            shm_order.order_type,
-            //            shm_order.shares_qty,
-            //            shm_order.price,
-            //            shm_order.timestamp,
-            //            shm_order.symbol,
-            //        );
-            //        
-            //        //println!("order from shm recv ");
-            //        //println!("Sending to balance manager ");
-            //        // send to balance manager 
-//
-            //        //match self.order_sender_to_balance_manager.send(order) {
-            //        //    Ok(_) => {}
-            //        //    Err(e) => {
-            //        //        eprintln!("[SHM Reader] Channel full, dropping order: {:?}", e);
-            //        //    }
-            //        //}
-//
-            //        match self.shm_bm_order_queue.push(order) {
-            //            Ok(_)=>{}
-            //            Err(order) => {
-            //                eprintln!(
-            //                    "[SHM Reader] Channel full, dropping order: {:?} ; queue_ptr={:p} len={} cap={}",
-            //                    order,
-            //                    Arc::as_ptr(&self.shm_bm_order_queue),
-            //                    self.shm_bm_order_queue.len(),
-            //                    self.shm_bm_order_queue.capacity()
-            //                  );
-            //                
-            //            }
-            //        }
-            //        
-            //        count += 1;
-            //    }
-            //    Ok(None) => {
-            //        // Queue empty, spin briefly
-            //        std::hint::spin_loop();
-            //    }
-            //    Err(e) => {
-            //        eprintln!("[SHM Reader] Dequeue error: {:?}", e);
-            //    }
-            //}
-            
-            // Metrics (every 2 seconds)
+            }// Metrics (every 2 seconds)
             if last_log.elapsed().as_secs() >= 2 {
                 let rate = count as f64 / last_log.elapsed().as_secs_f64();
                 eprintln!("[SHM Reader] {:.2}M orders/sec", rate / 1_000_000.0);
@@ -173,7 +103,7 @@ pub struct StShmReader{
 
 impl StShmReader{
     pub fn new() -> Option<Self> {
-        match IncomingOrderQueue::open("/tmp/sex") {
+        match IncomingOrderQueue::open("/tmp/IncomingOrders") {
             Ok(queue) => Some(Self { queue }),
             Err(e) => {
                 eprintln!("[SHM Reader] Failed to open queue: {:?}", e);
@@ -208,17 +138,16 @@ impl StShmReader{
                     shm_order.timestamp,
                     shm_order.symbol,
                 );
-                return Some(order);
-                //println!("order from shm recv ");
-                //println!("Sending to balance manager ");
                 // send to balance manager 
+                return Some(order);
+                
 
                 
             }
             Ok(None)=>{
                 
             }
-            Err(e) => {
+            Err(_) => {
                 return  None;
             }
         }

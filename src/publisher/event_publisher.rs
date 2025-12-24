@@ -3,23 +3,20 @@ use crate::{orderbook::{order::Side, types::{DepthData, Event, Fills, TickerData
 use std::{fmt::format, sync::Arc};
 use crate::singlepsinglecq::my_queue::SpscQueue;
 
-pub struct EventPublisher {
-    pub receiver: Receiver<Event>,   
+pub struct EventPublisher { 
     pub event_queue : Arc<SpscQueue<Event>> , 
     pub mypubsub : RedisPubSubManager ,
     pub pub_writter_order_event_queue : Arc<SpscQueue<OrderEvents>>
 }
 impl EventPublisher {
-    pub fn new(rx: Receiver<Event> , event_queue : Arc<SpscQueue<Event>> , mypubsub : RedisPubSubManager , pub_writter_order_event_queue : Arc<SpscQueue<OrderEvents>>) -> Self {
-        Self { receiver: rx , event_queue  , mypubsub , pub_writter_order_event_queue}
+    pub fn new( event_queue : Arc<SpscQueue<Event>> , mypubsub : RedisPubSubManager , pub_writter_order_event_queue : Arc<SpscQueue<OrderEvents>>) -> Self {
+        Self { event_queue  , mypubsub , pub_writter_order_event_queue}
     }
     pub fn start_publisher(&mut self) {
         println!("[PUBLISHER] Started (crossbeam batched mode) on core 5");
         loop {
             match self.event_queue.pop() {
                 Some(rec_event) => {
-                    //println!("recived the events ");
-
                     {
                         let ticker_message = TickerData::new(
                             String::from("ticker"), 
@@ -77,7 +74,6 @@ impl EventPublisher {
                     // check if fills are really needed or not for the user 
                     let orignal_qty =  rec_event.market_update.match_result.orignal_qty;
                     let remaining_qty = rec_event.market_update.match_result.remaining_qty;
-
                     if remaining_qty == 0  {
                         let _ = self.pub_writter_order_event_queue.push(OrderEvents {
                              user_id: rec_event.market_update.match_result.user_id, 

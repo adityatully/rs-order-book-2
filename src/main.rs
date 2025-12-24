@@ -23,17 +23,15 @@ use rust_orderbook_2::singlepsinglecq::my_queue::SpscQueue;
 fn main(){
     // initilaise all queues once , mmap with the virtual adddress space of this process 
     // threads can indivisually open the queues (SPSC)
-    std::fs::create_dir_all("/tmp/trading").expect("failed to init director");
-
-    let _ = IncomingOrderQueue::create("/tmp/trading/IncomingOrdersForMe").expect("failed to create queue");
-    let _ = CancelOrderQueue::create("/tmp/trading/CancelOrders").expect("failed to create queue");
-    let _ = OrderEventQueue::create("/tmp/trading/OrderEvents").expect("failed to create queue");
-    let _ = QueryQueue::create("/tmp/trading/Queries").expect("failed to create queue");
-    let _ = HoldingResQueue::create("/tmp/trading/HoldingsResponse").expect("failed to create queue");
-    let _ = BalanceResQueue::create("/tmp/trading/BalanceResponse").expect("failed to open queue");
+    let _ = IncomingOrderQueue::create("/tmp/IncomingOrders").expect("failed to create queue");
+    let _ = CancelOrderQueue::create("/tmp/CancelOrders").expect("failed to create queue");
+    let _ = OrderEventQueue::create("/tmp/OrderEvents").expect("failed to create queue");
+    let _ = QueryQueue::create("/tmp/Queries").expect("failed to create queue");
+    let _ = HoldingResQueue::create("/tmp/HoldingsResponse").expect("failed to create queue");
+    let _ = BalanceResQueue::create("/tmp/BalanceResponse").expect("failed to open queue");
 
 
-
+    // my impl queues 
     let fill_queue = Arc::new(SpscQueue::<Fills>::new(32768));
     let event_queue = Arc::new(SpscQueue::<Event>::new(32768));
     let bm_engine_order_queue = Arc::new(SpscQueue::<Order>::new(32768));
@@ -61,34 +59,6 @@ fn main(){
 
     let publisher_writer_order_event_queue_clone_for_pub = Arc::clone(&publisher_writer_order_event_queue);
     let publisher_writer_order_event_queue_clone_for_writter = Arc::clone(&publisher_writer_order_event_queue);
-    
-    
-    let (event_sender , event_rec) = crossbeam::channel::bounded::<Event>(1024);
-    let (fill_sender , fill_receiver) = crossbeam::channel::bounded::<Fills>(1024);
-    let (bm_to_engine_sender , bm_to_engine_reciver) = crossbeam::channel::bounded::<Order>(1024);
-    let (shm_to_bm_sender , shm_to_bm_receiver) = crossbeam::channel::bounded::<Order>(1024);
-
-    
-    
-    // clones for passing to different parts 
-
-    let event_sender_clone = event_sender.clone();
-    let event_receiver_clone = event_rec.clone();
-
-    let fill_sender_clone = fill_sender.clone();
-    let fill_reciver_clone = fill_receiver.clone();
-
-
-    let bm_to_engine_sender_clone = bm_to_engine_sender.clone();
-    let bm_to_engine_reciver_clone = bm_to_engine_reciver.clone();
-
-
-    let shm_to_bm_sender_clone = shm_to_bm_sender.clone();
-    let shm_to_bm_receiver_clone = shm_to_bm_receiver.clone();
-
-
-
-
 
     // SHM READER ONLY REQUIRES AN ORDER SENDER 
      let shm_reader_handle = std::thread::spawn(move || {
@@ -96,7 +66,6 @@ fn main(){
 
        
         let mut my_shm_reader = ShmReader::new(
-            shm_to_bm_sender_clone,
             shm_bm_order_queue_clone_for_reader
         ).unwrap();
 
@@ -116,9 +85,6 @@ fn main(){
         core_affinity::set_for_current(core_affinity::CoreId { id: 6 });
 
         let mut my_balance_manager = MyBalanceManager2::new(
-            bm_to_engine_sender_clone,
-            fill_reciver_clone,
-            shm_to_bm_receiver_clone,
             fill_queue_clone_for_bm,
             shm_bm_order_queue_clone_for_bm,
             bm_engine_order_queue_clone_for_bm,
@@ -135,10 +101,7 @@ fn main(){
         core_affinity::set_for_current(core_affinity::CoreId { id: 1 });
 
         let mut engine = MyEngine::new(
-            event_sender_clone,
             0,
-            fill_sender_clone,
-            bm_to_engine_reciver_clone,
             bm_engine_order_queue_clone_for_engine,
             fill_queue_clone_for_engine,
             event_queue_clone_for_engine
@@ -157,7 +120,6 @@ fn main(){
         core_affinity::set_for_current(core_affinity::CoreId { id: 5 });
 
         let mut my_publisher = EventPublisher::new(
-            event_receiver_clone,
             event_queue_clone_for_publisher,
             pubsub_connection.unwrap() , 
             publisher_writer_order_event_queue_clone_for_pub
@@ -176,17 +138,6 @@ fn main(){
             eprintln!("error initialising shm writter")
         }
     });
-
-   // DROPING ORIGNAL CHANNELS
-    drop(event_sender);
-    drop(fill_sender);
-    drop(fill_receiver);
-    drop(event_rec);
-    drop(bm_to_engine_reciver);
-    drop(bm_to_engine_sender);
-    drop(shm_to_bm_receiver);
-    drop(shm_to_bm_sender);
-
 
     // AWAITING THE MAIN THREAD FOR INFINITE TIME UNTILL ALL THESE THREADS JOIN 
     for handle in running_engines {

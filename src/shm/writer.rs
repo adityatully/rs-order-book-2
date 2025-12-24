@@ -11,7 +11,7 @@ pub struct ShmWriter{
 
 impl ShmWriter{
     pub fn new(recv_from_bm : Arc<SpscQueue<OrderEvents>>, recv_from_publisher : Arc<SpscQueue<OrderEvents>>)->Option<Self>{
-        let order_event_queue = OrderEventQueue::open("/tmp/trading/OrderEvents");
+        let order_event_queue = OrderEventQueue::open("/tmp/OrderEvents");
         match order_event_queue {
             Ok(queue)=>{
                 Some(Self{
