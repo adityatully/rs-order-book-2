@@ -16,7 +16,7 @@ use dashmap::DashMap;
 use crate::orderbook::types::{BalanceManagerError, Fills, };
 use crate::orderbook::order::{ Order, OrderToBeCanceled, Side};
 use crate::shm::event_queue::OrderEvents;
-use crate::shm::query_queue::{ self, QueryQueue, QueryType};
+use crate::shm::query_queue::{ self, QueryQueue};
 use crate::shm::balance_response_queue::{ BalanceResQueue, BalanceResponse};
 const MAX_USERS: usize = 100; 
 const MAX_SYMBOLS : usize = 100 ; 
@@ -44,6 +44,19 @@ impl Default for UserBalance{
     }
 }
 
+impl UserBalance{
+    pub fn new(user_id : u64)->Self{
+        Self {
+             user_id, 
+             available_balance: DEFAULT_BALANCE, 
+             reserved_balance: 0, 
+             total_traded_today: 0, 
+             order_count_today: 0, 
+             _pad: [0;24]
+             }
+    }
+}
+
 #[repr(C)]
 // dont allign to 64 , huge data wont fit into cache line anyhow 
 #[derive(Debug , Clone, Copy)]
@@ -58,6 +71,19 @@ impl Default for UserHoldings{
             user_id: 0,
             available_holdings: unsafe { std::mem::zeroed() },  // Faster than from_fn
             reserved_holdings : unsafe {
+                std::mem::zeroed()
+            }
+        }
+    }
+
+}
+
+impl UserHoldings{
+    pub fn new(user_id : u64)->Self{
+        Self { 
+            user_id, 
+            available_holdings: unsafe { std::mem::zeroed() },
+            reserved_holdings:  unsafe {
                 std::mem::zeroed()
             }
         }
@@ -273,6 +299,25 @@ impl MyBalanceManager2{
         
     }
 
+    pub fn add_user(&mut self , user_id : u64)->Result<u32 , BalanceManagerError>{
+        if self.state.user_id_to_index.contains_key(&user_id){
+            return Err(BalanceManagerError::UserAlreadyExists);
+        }
+        if self.state.next_free_slot as usize >= MAX_USERS {
+            return Err(BalanceManagerError::MaxUsersReached);
+        }
+        let idx = self.state.next_free_slot;
+        self.state.next_free_slot += 1;
+        self.state.total_users += 1;
+
+        self.state.balances[idx as usize] = UserBalance::new(user_id);
+        self.state.holdings[idx as usize] = UserHoldings::new(user_id);
+        
+        self.state.user_id_to_index.insert(user_id, idx);
+
+        Ok(idx)
+    }
+
 pub fn run_balance_manager(&mut self) {
     const BATCH_ORDERS: usize = 1000;
 
@@ -339,29 +384,11 @@ pub fn run_balance_manager(&mut self) {
         match self.query_queue.dequeue(){
             Ok(Some(rec_query))=>{
                 match rec_query.query_type{
-                    QueryType::AddUser =>{
-                        // expose function to add a user 
+                    2 =>{
+                        // we get the query to add a user 
                     }
-                    QueryType::GetBalance =>{
-                        let user_index = self.get_user_index(rec_query.user_id);
-                        if user_index.is_ok(){
-                            let user_balance = self.get_user_balance_copy_for_query(user_index.unwrap());
-                            let _ = self.balance_response_queue.enqueue(BalanceResponse{
-                                query_id : rec_query.query_id , 
-                                user_id : rec_query.user_id , 
-                                response_type : 0 , 
-                                response : user_balance , 
-                                _pad : [0;47],
-                            });
-                        
-                        }
-                    }
-                    QueryType::GetHoldings=>{
-                        let user_index = self.get_user_index(rec_query.user_id);
-                        if user_index.is_ok(){
-                            let user_holdings = self.get_user_holdings_copy_for_query(user_index.unwrap());
-                            let _ = self.holding_response_queue.enqueue(HoldingResponse { query_id:rec_query.query_id , user_id: rec_query.user_id, response:user_holdings });
-                        }
+                    _ =>{
+
                     }
                 }
             }
@@ -619,6 +646,25 @@ impl STbalanceManager{
 
         Ok(())
         
+    }
+
+    pub fn add_user(&mut self , user_id : u64)->Result<u32 , BalanceManagerError>{
+        if self.state.user_id_to_index.contains_key(&user_id){
+            return Err(BalanceManagerError::UserAlreadyExists);
+        }
+        if self.state.next_free_slot as usize >= MAX_USERS {
+            return Err(BalanceManagerError::MaxUsersReached);
+        }
+        let idx = self.state.next_free_slot;
+        self.state.next_free_slot += 1;
+        self.state.total_users += 1;
+
+        self.state.balances[idx as usize] = UserBalance::new(user_id);
+        self.state.holdings[idx as usize] = UserHoldings::new(user_id);
+        
+        self.state.user_id_to_index.insert(user_id, idx);
+
+        Ok(idx)
     }
 
 }

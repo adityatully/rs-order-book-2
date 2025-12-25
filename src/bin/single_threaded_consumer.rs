@@ -134,6 +134,24 @@ impl TradingCore {
                 }
             }
 
+            match self.balance_manager.query_queue.dequeue(){
+                Ok(Some(query))=>{
+                    // we wud only get the add user query from here , qid , user_id , query_Type 2 
+                    match query.query_type{
+                        2 => {
+                            let _= self.balance_manager.add_user(query.user_id);
+                        }
+                        _=>{
+
+                        }
+                    }
+                }
+                Ok(None)=>{}
+                Err(_)=>{}
+            }
+
+            
+
 
           
             if self.last_log.elapsed().as_secs() >= 2 {

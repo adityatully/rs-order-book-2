@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::os::unix::fs::OpenOptionsExt;
 
-use crate::shm::query_queue;
+
 
 // QueueHeader with cache-line padding matching Go
 #[repr(C)]
@@ -22,14 +22,7 @@ pub struct QueueHeader {
 pub struct Query{
     pub query_id : u64 ,
     pub user_id : u64 , 
-    pub query_type : QueryType    // 0 -> get balance , 1 -> get holdings , 2 -> add user on login 
-}
-#[repr(C)]
-#[derive(Debug , Clone, Copy)]
-pub enum QueryType{
-    GetBalance ,
-    GetHoldings ,
-    AddUser 
+    pub query_type : u8 ,   // 0 -> get balance , 1 -> get holdings , 2 -> add user on login 
 }
 const QUEUE_MAGIC: u32 = 0x51554552;
 // reduce size 

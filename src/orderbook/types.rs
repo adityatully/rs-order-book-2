@@ -93,7 +93,10 @@ pub enum BalanceManagerError{
     UserNotFound ,
     BalanceNotFound,
     InvalidSymbol ,
-    BalanceUpdateErrorAfterCancel
+    BalanceUpdateErrorAfterCancel,
+    CouldntAddUser,
+    UserAlreadyExists,
+    MaxUsersReached
 }
 
 pub struct BalanceInfo{
