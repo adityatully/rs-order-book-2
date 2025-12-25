@@ -7,12 +7,12 @@ use rust_orderbook_2::engine::my_engine::{ Engine, MyEngine};
 use rust_orderbook_2::publisher::event_publisher::EventPublisher;
 use core_affinity;
 use rust_orderbook_2::pubsub::pubsub_manager::RedisPubSubManager;
-use rust_orderbook_2::shm::holdings_response_queue::HoldingResQueue;
+use rust_orderbook_2::shm::holdings_response_queue::{HoldingResQueue, HoldingResponse};
 use rust_orderbook_2::shm::queue::IncomingOrderQueue;
 use rust_orderbook_2::shm::cancel_orders_queue::CancelOrderQueue;
 use rust_orderbook_2::shm::event_queue::{OrderEventQueue, OrderEvents};
 use rust_orderbook_2::shm::query_queue::QueryQueue;
-use rust_orderbook_2::shm::balance_response_queue::{BalanceResQueue};
+use rust_orderbook_2::shm::balance_response_queue::{BalanceResQueue, BalanceResponse};
 use rust_orderbook_2::shm::reader::ShmReader;
 use rust_orderbook_2::shm::writer::ShmWriter;
 use bounded_spsc_queue;
@@ -37,7 +37,8 @@ fn main(){
     let (order_event_producer_bm , order_event_consumer_writter_from_bm) = bounded_spsc_queue::make::<OrderEvents>(32768);
     let (order_event_producer_publisher , order_event_consumer_writter_from_publisher) = bounded_spsc_queue::make::<OrderEvents>(32768);
     let (order_event_producer_engine , order_event_consumer_writter_from_engine) = bounded_spsc_queue::make::<OrderEvents>(32768);
-
+    let (balance_event_producer_bm , balance_event_consumer_writter) = bounded_spsc_queue::make::<BalanceResponse>(32768);
+    let (holding_event_producer_bm , holding_event_consumer_writter) = bounded_spsc_queue::make::<HoldingResponse>(32768);
     
     let shm_reader_handle = std::thread::spawn(move || {
         core_affinity::set_for_current(core_affinity::CoreId { id: 2 });
@@ -58,7 +59,9 @@ fn main(){
             fill_consumer_bm , 
             order_consumer_bm,
             order_producer_bm,
-            order_event_producer_bm
+            order_event_producer_bm,
+            balance_event_producer_bm,
+            holding_event_producer_bm
         );
 
         my_balance_manager.add_throughput_test_users();
@@ -109,7 +112,9 @@ fn main(){
         let  shm_writter = ShmWriter::new(
             order_event_consumer_writter_from_bm,
             order_event_consumer_writter_from_publisher,
-            order_event_consumer_writter_from_engine
+            order_event_consumer_writter_from_engine,
+            balance_event_consumer_writter,
+            holding_event_consumer_writter
         );
         if shm_writter.is_some(){
             shm_writter.unwrap().start_shm_writter();

@@ -119,45 +119,41 @@ pub struct MyBalanceManager2{
 
 
     pub query_queue : QueryQueue,
-    pub balance_response_queue : BalanceResQueue,
-    pub holding_response_queue : HoldingResQueue,
 
     pub fill_recv_from_engine_try : Consumer<Fills>,
     pub order_recv_from_shm_try : Consumer<Order>,
     pub order_send_to_engine_try : Producer<Order>,
-    pub events_to_wrriter_try : Producer<OrderEvents>
+    pub events_to_wrriter_try : Producer<OrderEvents>,
+
+
+    pub balance_updates_sender : Producer<BalanceResponse>,
+    pub holding_update_sender : Producer<HoldingResponse>
+
 }
 
 impl MyBalanceManager2{
     pub fn new(fill_recv_from_engine_try : Consumer<Fills>,
         order_recv_from_shm_try : Consumer<Order>,
         order_send_to_engine_try : Producer<Order>,
-        events_to_wrriter_try : Producer<OrderEvents>
+        events_to_wrriter_try : Producer<OrderEvents>,
+        balance_updates_sender : Producer<BalanceResponse>,
+        holding_update_sender : Producer<HoldingResponse>
     )->Self{
         let query_queue = QueryQueue::open("/tmp/Queries");
-        let holding_response_queue = HoldingResQueue::open("/tmp/HoldingsResponse");
-        let balance_response_queue = BalanceResQueue::open("/tmp/BalanceResponse");
+        
         if query_queue.is_err(){
             eprintln!("query quque init error in balance manager");
             eprintln!("{:?}" , query_queue)
         }
-        if balance_response_queue.is_err(){
-            eprintln!("response queue init error in balance manager");
-            eprintln!("{:?}" , balance_response_queue)
-        }
-        if holding_response_queue.is_err(){
-            eprintln!("response queue init error in balance manager");
-            eprintln!("{:?}" , holding_response_queue)
-        }
         let balance_state = BalanceState::new();
         Self { state: balance_state,
          query_queue: query_queue.unwrap() , 
-         holding_response_queue: holding_response_queue.unwrap() , 
-         balance_response_queue : balance_response_queue.unwrap() , 
          fill_recv_from_engine_try ,
          order_recv_from_shm_try,
          order_send_to_engine_try,
-         events_to_wrriter_try
+         events_to_wrriter_try,
+         balance_updates_sender,
+         holding_update_sender
         }
     }
     pub fn get_user_index(&self , user_id : u64 )->Result<u32 , BalanceManagerError>{
@@ -282,16 +278,26 @@ impl MyBalanceManager2{
         // understand what happens with thw ? mark here 
         match side {
             Side::Ask => {
-                let holdings = self.get_user_holdings(user_index);
+                
                 // side was ask , he was selling so this was only chnaged , order wsent fullfilled , no use of price 
-                holdings.reserved_holdings[canceled_order.symbol as usize] = holdings.reserved_holdings[canceled_order.symbol as usize] - qty;
-                holdings.available_holdings[canceled_order.symbol as usize] = holdings.reserved_holdings[canceled_order.symbol as usize] + qty;
+                let old_reserved_holdings = self.state.holdings[user_index as usize].reserved_holdings[canceled_order.symbol as usize];
+                let old_available_holdings = self.state.holdings[user_index as usize].available_holdings[canceled_order.symbol as usize];
+
+                self.state.holdings[user_index as usize].reserved_holdings[canceled_order.symbol as usize] = old_reserved_holdings - qty;
+                self.state.holdings[user_index as usize].available_holdings[canceled_order.symbol as usize] = old_available_holdings + qty;
+
             }
             Side::Bid =>{
-                let balance = self.get_user_balance(user_index);
+
                 // he was buying , his ballcne wud have been reserved 
-                balance.reserved_balance = balance.reserved_balance-price;
-                balance.available_balance = balance.available_balance+price;
+                let old_reserved_balance = self.get_user_balance(user_index).reserved_balance;
+                let old_available_balance = self.get_user_balance(user_index).available_balance;
+
+
+                self.state.balances[user_index as usize].available_balance = old_available_balance + price*qty as u64;
+                self.state.balances[user_index as usize].reserved_balance = old_reserved_balance - price*qty as u64;
+                
+               
             }
         };
 
@@ -448,13 +454,18 @@ pub fn run_balance_manager(&mut self) {
 pub struct STbalanceManager{
     state : BalanceState,
     pub query_queue : QueryQueue,
-    pub balance_response_queue : BalanceResQueue,
-    pub holding_response_queue : HoldingResQueue,
-    pub events_to_wrriter_try : Producer<OrderEvents>
+    pub events_to_wrriter_try : Producer<OrderEvents> , 
+
+    pub balance_updates_sender : Producer<BalanceResponse>,
+    pub holding_update_sender : Producer<HoldingResponse>
 }
 
 impl STbalanceManager{
-    pub fn new(events_to_wrriter_try : Producer<OrderEvents>)->Self{
+    pub fn new(
+        events_to_wrriter_try : Producer<OrderEvents>,
+        balance_updates_sender : Producer<BalanceResponse>,
+        holding_update_sender : Producer<HoldingResponse>
+    )->Self{
         let query_queue = QueryQueue::open("/tmp/Queries");
         let holding_response_queue = HoldingResQueue::open("/tmp/HoldingsResponse");
         let balance_response_queue = BalanceResQueue::open("/tmp/BalanceResponse");
@@ -474,9 +485,9 @@ impl STbalanceManager{
         Self {  
             state: balance_state , 
             query_queue : query_queue.unwrap() , 
-            balance_response_queue : balance_response_queue.unwrap() , 
-            holding_response_queue : holding_response_queue.unwrap()  ,
-            events_to_wrriter_try
+            events_to_wrriter_try,
+            balance_updates_sender,
+            holding_update_sender
         }
     }
     #[inline(always)]
@@ -542,38 +553,68 @@ impl STbalanceManager{
             let maker_index = self.get_user_index(fill.maker_user_id)?;
             let taker_index = self.get_user_index(fill.taker_user_id)?;
             let fill_value = fill.price * fill.quantity as u64;
-            
+            let mut maker_balance_update = BalanceResponse { 
+                query_id: 0, 
+                user_id: fill.maker_user_id, 
+                response_type: 0,
+                 _pad: [0;47], 
+                 response:UserBalance::default()
+            };
+            let mut taker_balance_update = BalanceResponse { 
+                query_id: 0, 
+                user_id: fill.taker_user_id, 
+                response_type: 0,
+                 _pad: [0;47], 
+                 response:UserBalance::default()
+            };
+
+
             match fill.taker_side {
                 Side::Ask => {
                     // Taker is selling , jo order aya was sell order , order book pe(maker) buy order 
                     // add money , he sold 
-
-                    {let  taker_balance = self.get_user_balance(taker_index);
+                    
+                    
+                {
+                    let  taker_balance = self.get_user_balance(taker_index);
                     let taker_avail_bal = taker_balance.available_balance;
-                    taker_balance.available_balance = taker_avail_bal + fill_value;}
+                    taker_balance.available_balance = taker_avail_bal + fill_value;
+                    taker_balance_update.response.available_balance = taker_balance.available_balance;
+                    taker_balance_update.response.reserved_balance = taker_balance.reserved_balance;
+
+                }
                     
                     // remove holdings from resevred
                     {let  taker_holdings = self.get_user_holdings(taker_index);
                     let taker_reserved_holdings = taker_holdings.reserved_holdings[fill.symbol as usize];
                     taker_holdings.reserved_holdings[fill.symbol as usize] = taker_reserved_holdings - fill.quantity;}
                     
-                    {let  maker_balance = self.get_user_balance(maker_index);
+                {   
+                    let  maker_balance = self.get_user_balance(maker_index);
                     let maker_reserved_bal = maker_balance.reserved_balance;
-                    maker_balance.reserved_balance= maker_reserved_bal - fill_value;}
+                    maker_balance.reserved_balance= maker_reserved_bal - fill_value;
+                    maker_balance_update.response.available_balance = maker_balance.available_balance;
+                    maker_balance_update.response.reserved_balance = maker_balance.reserved_balance;
+                }
                     
                     // add shares , he bough 
                     {let  maker_holdings = self.get_user_holdings(maker_index);
                     let maker_avail_holdings = maker_holdings.available_holdings[fill.symbol as usize];
                     maker_holdings.available_holdings[fill.symbol as usize]= maker_avail_holdings + fill.quantity}
+
+
                         
-                }
+                }   
                 
                 Side::Bid => {
                     // Taker is buying , incoming is a buying order 
 
                    { let  taker_balance = self.get_user_balance(taker_index);
                     let taker_reserved_bal = taker_balance.reserved_balance;
-                    taker_balance.reserved_balance= taker_reserved_bal - fill_value;}
+                    taker_balance.reserved_balance= taker_reserved_bal - fill_value;
+                    taker_balance_update.response.available_balance = taker_balance.available_balance;
+                    taker_balance_update.response.reserved_balance = taker_balance.reserved_balance;
+                }
                         
                     
                     {let  taker_holdings = self.get_user_holdings(taker_index);
@@ -582,7 +623,10 @@ impl STbalanceManager{
                     
                     {let  maker_balance = self.get_user_balance(maker_index);
                     let maker_avail_bal = maker_balance.available_balance;
-                    maker_balance.available_balance= maker_avail_bal + fill_value;}
+                    maker_balance.available_balance= maker_avail_bal + fill_value;
+                    maker_balance_update.response.available_balance = maker_balance.available_balance;
+                    maker_balance_update.response.reserved_balance = maker_balance.reserved_balance;
+                }
     
                     
                     {let  maker_holdings = self.get_user_holdings(maker_index);
@@ -590,6 +634,11 @@ impl STbalanceManager{
                     maker_holdings.reserved_holdings[fill.symbol as usize]= maker_reserved_holdings - fill.quantity;}
                 }
             }
+
+            // send udates to the writter for the maker and the taker indexes 
+            let _ = self.balance_updates_sender.try_push(maker_balance_update);
+            let _ = self.balance_updates_sender.try_push(taker_balance_update);
+            
         }
         
         Ok(())
@@ -631,16 +680,26 @@ impl STbalanceManager{
         // understand what happens with thw ? mark here 
         match side {
             Side::Ask => {
-                let holdings = self.get_user_holdings(user_index);
+                
                 // side was ask , he was selling so this was only chnaged , order wsent fullfilled , no use of price 
-                holdings.reserved_holdings[canceled_order.symbol as usize] = holdings.reserved_holdings[canceled_order.symbol as usize] - qty;
-                holdings.available_holdings[canceled_order.symbol as usize] = holdings.reserved_holdings[canceled_order.symbol as usize] + qty;
+                let old_reserved_holdings = self.state.holdings[user_index as usize].reserved_holdings[canceled_order.symbol as usize];
+                let old_available_holdings = self.state.holdings[user_index as usize].available_holdings[canceled_order.symbol as usize];
+
+                self.state.holdings[user_index as usize].reserved_holdings[canceled_order.symbol as usize] = old_reserved_holdings - qty;
+                self.state.holdings[user_index as usize].available_holdings[canceled_order.symbol as usize] = old_available_holdings + qty;
+
             }
             Side::Bid =>{
-                let balance = self.get_user_balance(user_index);
+
                 // he was buying , his ballcne wud have been reserved 
-                balance.reserved_balance = balance.reserved_balance-price;
-                balance.available_balance = balance.available_balance+price;
+                let old_reserved_balance = self.get_user_balance(user_index).reserved_balance;
+                let old_available_balance = self.get_user_balance(user_index).available_balance;
+
+
+                self.state.balances[user_index as usize].available_balance = old_available_balance + price;
+                self.state.balances[user_index as usize].reserved_balance = old_reserved_balance - price;
+                
+               
             }
         };
 

@@ -1,5 +1,5 @@
 use rust_orderbook_2::{
-    balance_manager::my_balance_manager2::STbalanceManager, engine::my_engine::{Engine, STEngine}, orderbook::{order::Order, types::Event}, shm::reader::StShmReader
+    balance_manager::my_balance_manager2::STbalanceManager, engine::my_engine::{Engine, STEngine}, orderbook::{order::Order, types::Event}, shm::{balance_response_queue::BalanceResponse, holdings_response_queue::HoldingResponse, reader::StShmReader}
 };
 use std::time::Instant;
 use rust_orderbook_2::shm::queue::IncomingOrderQueue;
@@ -17,9 +17,15 @@ pub struct TradingCore {
     order_batch : Vec<Order>
 }
 impl TradingCore {
-    pub fn new(event_sender_to_writter : Producer<OrderEvents> , event_sender_to_publisher_by_engine : Producer<Event> , order_event_producer_engine : Producer<OrderEvents>) -> Self {
+    pub fn new(
+        event_sender_to_writter : Producer<OrderEvents> ,
+        event_sender_to_publisher_by_engine : Producer<Event> , 
+        order_event_producer_engine : Producer<OrderEvents>,
+        balance_event_producer_bm : Producer<BalanceResponse>,
+        holding_event_producer_bm : Producer<HoldingResponse>
+    ) -> Self {
         Self {
-            balance_manager: STbalanceManager::new(event_sender_to_writter),
+            balance_manager: STbalanceManager::new(event_sender_to_writter , balance_event_producer_bm , holding_event_producer_bm),
             shm_reader: StShmReader::new().unwrap(),
             engine: STEngine::new(0 , event_sender_to_publisher_by_engine , order_event_producer_engine),
             processed_count: 0,
@@ -95,7 +101,6 @@ impl TradingCore {
             match self.engine.cancel_order_queue.dequeue(){
                 Ok(Some(order_to_be_canceled))=>{
                     if let Some(order_book) = self.engine.get_book_mut(order_to_be_canceled.symbol){
-                        
                         // we canceled the order update the balance , pass the orderEvent to the Writter too
                         // this queue would be only for canceling the limit orderrs 
                         // we need to get the detials of this order from the order manager 
@@ -133,7 +138,6 @@ impl TradingCore {
 
                 }
             }
-
             match self.balance_manager.query_queue.dequeue(){
                 Ok(Some(query))=>{
                     // we wud only get the add user query from here , qid , user_id , query_Type 2 
@@ -150,10 +154,6 @@ impl TradingCore {
                 Err(_)=>{}
             }
 
-            
-
-
-          
             if self.last_log.elapsed().as_secs() >= 2 {
                 let elapsed = self.last_log.elapsed();
                 let rate = self.processed_count as f64 / elapsed.as_secs_f64();
@@ -181,10 +181,23 @@ fn main() {
     let (event_producer_engine , event_consumer_publisher) = bounded_spsc_queue::make::<Event>(32678);
     let (order_event_producer_publisher , order_event_consumer_writter_from_publisher) = bounded_spsc_queue::make::<OrderEvents>(32768);
     let (order_event_producer_engine , order_event_consumer_writter_from_engine) = bounded_spsc_queue::make::<OrderEvents>(32768);
+    let (balance_event_producer_bm , balance_event_consumer_writter) = bounded_spsc_queue::make::<BalanceResponse>(32768);
+    let (holding_event_producer_bm , holding_event_consumer_writter) = bounded_spsc_queue::make::<HoldingResponse>(32768);
+
+
     let _ = IncomingOrderQueue::create("/tmp/IncomingOrders");
-    let mut trading_system = TradingCore::new(order_event_producer_bm , event_producer_engine , order_event_producer_engine);
+    let mut trading_system = TradingCore::new(
+        order_event_producer_bm , 
+        event_producer_engine , 
+        order_event_producer_engine,
+        balance_event_producer_bm,
+        holding_event_producer_bm
+    );
     trading_system.balance_manager.add_throughput_test_users();
     trading_system.engine.add_book(0);
+
+
+
 
     let pubsub_connection = RedisPubSubManager::new("redis://localhost:6379");
     if pubsub_connection.is_err(){
@@ -201,13 +214,18 @@ fn main() {
 
         my_publisher.start_publisher();
     });
+
+
+
     // SHM WRITTER TO WRITE TO QUEUES 
     let writter_handle = std::thread::spawn(move|| {
         core_affinity::set_for_current(core_affinity::CoreId { id: 7 });
         let  shm_writter = ShmWriter::new(
             order_event_consumer_writter_from_bm,
             order_event_consumer_writter_from_publisher,
-            order_event_consumer_writter_from_engine
+            order_event_consumer_writter_from_engine,
+            balance_event_consumer_writter,
+            holding_event_consumer_writter
         );
         if shm_writter.is_some(){
             shm_writter.unwrap().start_shm_writter();
