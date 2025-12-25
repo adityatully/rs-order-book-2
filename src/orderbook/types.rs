@@ -92,7 +92,8 @@ pub enum BalanceManagerError{
     BalanceLockingFailed , 
     UserNotFound ,
     BalanceNotFound,
-    InvalidSymbol 
+    InvalidSymbol ,
+    BalanceUpdateErrorAfterCancel
 }
 
 pub struct BalanceInfo{

@@ -5,6 +5,7 @@ use crate::orderbook::order::{Order, Side};
 use crate::orderbook::types::{Event, Fills, MarketUpdateAfterTrade, MatchResult, OrderBookError} ;
 use crate::orderbook::order_book::{ OrderBook};
 use crate::shm::cancel_orders_queue::{ CancelOrderQueue};
+use crate::shm::event_queue::OrderEvents;
 use std::time::{Instant, Duration};
 
 
@@ -30,6 +31,7 @@ pub struct MyEngine{
     pub bm_order_reciver_try : Consumer<Order>,
     pub sending_fills_to_bm_try : Producer<Fills>,
     pub sending_event_to_publisher_try : Producer<Event>,
+    pub sending_order_events_to_writter_try : Producer<OrderEvents>,
 }
 
 impl MyEngine{
@@ -37,7 +39,7 @@ impl MyEngine{
         bm_order_reciver_try : Consumer<Order>,
         sending_fills_to_bm_try : Producer<Fills>,
         sending_event_to_publisher_try : Producer<Event>,
-
+        sending_order_events_to_writter_try : Producer<OrderEvents>,
         )->Option<Self> {
             let cancel_orders_queue = CancelOrderQueue::open("/tmp/CancelOrders");
             match cancel_orders_queue {
@@ -50,7 +52,8 @@ impl MyEngine{
                         cancel_order_queue : queue , 
                         bm_order_reciver_try , 
                         sending_fills_to_bm_try , 
-                        sending_event_to_publisher_try 
+                        sending_event_to_publisher_try ,
+                        sending_order_events_to_writter_try
                     } )
                 }
                 Err(_)=>{
@@ -177,9 +180,10 @@ pub struct STEngine{
     pub books : HashMap<u32 , OrderBook>,
     pub cancel_order_queue : CancelOrderQueue,
     pub sending_event_to_publisher_try : Producer<Event>,
+    pub sending_order_events_to_writter_try : Producer<OrderEvents>,
 }
 impl STEngine{
-    pub fn new( engine_id : usize , event_sender_to_publisher : Producer<Event> )->Self {
+    pub fn new( engine_id : usize , event_sender_to_publisher : Producer<Event> , sending_order_events_to_writter_try : Producer<OrderEvents>, )->Self {
         // initialise the publisher channel here 
             let cancel_order_queue = CancelOrderQueue::open("/tmp/CancelOrders");
             if cancel_order_queue.is_err(){
@@ -190,7 +194,8 @@ impl STEngine{
                 book_count : 0 ,
                 books : HashMap::new(),
                 cancel_order_queue : cancel_order_queue.unwrap(),
-                sending_event_to_publisher_try : event_sender_to_publisher
+                sending_event_to_publisher_try : event_sender_to_publisher,
+                sending_order_events_to_writter_try
             } 
     }
     #[inline(always)]

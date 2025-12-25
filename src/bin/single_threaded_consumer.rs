@@ -5,6 +5,9 @@ use std::time::Instant;
 use rust_orderbook_2::shm::queue::IncomingOrderQueue;
 use bounded_spsc_queue::Producer;
 use rust_orderbook_2::shm::event_queue::OrderEvents;
+use rust_orderbook_2::pubsub::pubsub_manager::RedisPubSubManager;
+use rust_orderbook_2::shm::writer::ShmWriter;
+use rust_orderbook_2::publisher::event_publisher::EventPublisher;
 pub struct TradingCore {
     pub balance_manager: STbalanceManager,
     pub shm_reader: StShmReader,
@@ -13,19 +16,17 @@ pub struct TradingCore {
     last_log: Instant,
     order_batch : Vec<Order>
 }
-
 impl TradingCore {
-    pub fn new(event_sender_to_writter : Producer<OrderEvents> , event_sender_to_publisher_by_engine : Producer<Event>) -> Self {
+    pub fn new(event_sender_to_writter : Producer<OrderEvents> , event_sender_to_publisher_by_engine : Producer<Event> , order_event_producer_engine : Producer<OrderEvents>) -> Self {
         Self {
             balance_manager: STbalanceManager::new(event_sender_to_writter),
             shm_reader: StShmReader::new().unwrap(),
-            engine: STEngine::new(0 , event_sender_to_publisher_by_engine),
+            engine: STEngine::new(0 , event_sender_to_publisher_by_engine , order_event_producer_engine),
             processed_count: 0,
             last_log: Instant::now(),
             order_batch : Vec::with_capacity(1000)
         }
     }
-
     pub fn run(&mut self) {
         eprintln!("[Trading Core] Starting single-threaded mode");
         loop {
@@ -90,6 +91,38 @@ impl TradingCore {
                     }
                 }
             }
+
+            match self.engine.cancel_order_queue.dequeue(){
+                Ok(Some(order_to_be_canceled))=>{
+                    if let Some(order_book) = self.engine.get_book_mut(order_to_be_canceled.symbol){
+                        
+                        // we canceled the order update the balance , pass the orderEvent to the Writter too
+                        // this queue would be only for canceling the limit orderrs 
+                        // we need to get the detials of this order from the order manager 
+                        // side , qty nd price 
+                        let order_index = order_book.manager.id_to_index[&order_to_be_canceled.order_id];
+                        let order_detials = order_book.manager.get(order_index).unwrap();
+                        match self.balance_manager.update_balance_after_order_cancel(order_to_be_canceled, order_detials.side, order_detials.shares_qty, order_detials.price) {
+                            Ok(_)=>{
+                                order_book.cancel_order(order_to_be_canceled.order_id);
+                            }
+                            Err(_)=>{
+
+                            }
+                        }
+                    }else{
+                        eprint!("invalid order")
+                    }
+                }
+                Ok(None)=>{
+                    
+                }
+                Err(_) => {
+
+                }
+            }
+
+
           
             if self.last_log.elapsed().as_secs() >= 2 {
                 let elapsed = self.last_log.elapsed();
@@ -114,15 +147,52 @@ impl TradingCore {
 
 #[hotpath::main]
 fn main() {
-    let (order_event_producer_bm , _) = bounded_spsc_queue::make::<OrderEvents>(32678);
-    let (event_producer_engine , _) = bounded_spsc_queue::make::<Event>(32678);
+    let (order_event_producer_bm , order_event_consumer_writter_from_bm) = bounded_spsc_queue::make::<OrderEvents>(32678);
+    let (event_producer_engine , event_consumer_publisher) = bounded_spsc_queue::make::<Event>(32678);
+    let (order_event_producer_publisher , order_event_consumer_writter_from_publisher) = bounded_spsc_queue::make::<OrderEvents>(32768);
+    let (order_event_producer_engine , order_event_consumer_writter_from_engine) = bounded_spsc_queue::make::<OrderEvents>(32768);
     let _ = IncomingOrderQueue::create("/tmp/IncomingOrders");
-    let mut trading_system = TradingCore::new(order_event_producer_bm , event_producer_engine);
+    let mut trading_system = TradingCore::new(order_event_producer_bm , event_producer_engine , order_event_producer_engine);
     trading_system.balance_manager.add_throughput_test_users();
     trading_system.engine.add_book(0);
+
+    let pubsub_connection = RedisPubSubManager::new("redis://localhost:6379");
+    if pubsub_connection.is_err(){
+        panic!("pubsub error , not initialising publisher");
+    }
+    //PUBLISHER REQUIRES AN EVENT RECV ONLY 
+    let publisher_handle = std::thread::spawn(move || {
+        core_affinity::set_for_current(core_affinity::CoreId { id: 5 });
+        let mut my_publisher = EventPublisher::new(
+            pubsub_connection.unwrap() , 
+            event_consumer_publisher,
+            order_event_producer_publisher
+        );
+
+        my_publisher.start_publisher();
+    });
+    // SHM WRITTER TO WRITE TO QUEUES 
+    let writter_handle = std::thread::spawn(move|| {
+        core_affinity::set_for_current(core_affinity::CoreId { id: 7 });
+        let  shm_writter = ShmWriter::new(
+            order_event_consumer_writter_from_bm,
+            order_event_consumer_writter_from_publisher,
+            order_event_consumer_writter_from_engine
+        );
+        if shm_writter.is_some(){
+            shm_writter.unwrap().start_shm_writter();
+        }
+        else{
+            eprintln!("error initialising shm writter")
+        }
+    });
     
     eprintln!("[Main] Initialization complete, starting trading loop");
     trading_system.run();
+
+    publisher_handle.join().expect("publisher pankicked");
+    writter_handle.join().expect("writter panicked");
+    println!("System shutdown");
 }
 
 

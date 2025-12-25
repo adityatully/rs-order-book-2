@@ -14,7 +14,7 @@ use crossbeam_utils::Backoff;
 use crate::shm::holdings_response_queue::{HoldingResQueue, HoldingResponse};
 use dashmap::DashMap;
 use crate::orderbook::types::{BalanceManagerError, Fills, };
-use crate::orderbook::order::{ Order, Side};
+use crate::orderbook::order::{ Order, OrderToBeCanceled, Side};
 use crate::shm::event_queue::OrderEvents;
 use crate::shm::query_queue::{ self, QueryQueue, QueryType};
 use crate::shm::balance_response_queue::{ BalanceResQueue, BalanceResponse};
@@ -251,6 +251,28 @@ impl MyBalanceManager2{
         Ok(())
     }
 
+    pub fn update_balance_after_order_cancel(&mut self , canceled_order : OrderToBeCanceled , side : Side , qty : u32 , price : u64 )->Result<() , BalanceManagerError>{
+        let user_index = self.get_user_index(canceled_order.user_id)?;
+        // understand what happens with thw ? mark here 
+        match side {
+            Side::Ask => {
+                let holdings = self.get_user_holdings(user_index);
+                // side was ask , he was selling so this was only chnaged , order wsent fullfilled , no use of price 
+                holdings.reserved_holdings[canceled_order.symbol as usize] = holdings.reserved_holdings[canceled_order.symbol as usize] - qty;
+                holdings.available_holdings[canceled_order.symbol as usize] = holdings.reserved_holdings[canceled_order.symbol as usize] + qty;
+            }
+            Side::Bid =>{
+                let balance = self.get_user_balance(user_index);
+                // he was buying , his ballcne wud have been reserved 
+                balance.reserved_balance = balance.reserved_balance-price;
+                balance.available_balance = balance.available_balance+price;
+            }
+        };
+
+        Ok(())
+        
+    }
+
 pub fn run_balance_manager(&mut self) {
     const BATCH_ORDERS: usize = 1000;
 
@@ -259,7 +281,7 @@ pub fn run_balance_manager(&mut self) {
     let mut count: u64 = 0;
     let mut last_log = std::time::Instant::now();
     let mut _channel_recv_time = std::time::Duration::ZERO;
-    let mut channel_send_time = std::time::Duration::ZERO;
+    let  channel_send_time = std::time::Duration::ZERO;
     let mut lock_funds_time = std::time::Duration::ZERO;
     let mut update_balance_time = std::time::Duration::ZERO;
 
@@ -395,8 +417,6 @@ pub fn run_balance_manager(&mut self) {
     
     
 }
-
-
 
 pub struct STbalanceManager{
     state : BalanceState,
@@ -578,6 +598,27 @@ impl STbalanceManager{
         eprintln!("[BM] User 20 holdings[0]: {}", user20_holdings);
         eprintln!("[BM] User map contains 10: {}", self.state.user_id_to_index.contains_key(&10));
         eprintln!("[BM] User map contains 20: {}", self.state.user_id_to_index.contains_key(&20));
+    }
+    pub fn update_balance_after_order_cancel(&mut self , canceled_order : OrderToBeCanceled , side : Side , qty : u32 , price : u64 )->Result<() , BalanceManagerError>{
+        let user_index = self.get_user_index(canceled_order.user_id)?;
+        // understand what happens with thw ? mark here 
+        match side {
+            Side::Ask => {
+                let holdings = self.get_user_holdings(user_index);
+                // side was ask , he was selling so this was only chnaged , order wsent fullfilled , no use of price 
+                holdings.reserved_holdings[canceled_order.symbol as usize] = holdings.reserved_holdings[canceled_order.symbol as usize] - qty;
+                holdings.available_holdings[canceled_order.symbol as usize] = holdings.reserved_holdings[canceled_order.symbol as usize] + qty;
+            }
+            Side::Bid =>{
+                let balance = self.get_user_balance(user_index);
+                // he was buying , his ballcne wud have been reserved 
+                balance.reserved_balance = balance.reserved_balance-price;
+                balance.available_balance = balance.available_balance+price;
+            }
+        };
+
+        Ok(())
+        
     }
 
 }

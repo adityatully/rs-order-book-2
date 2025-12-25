@@ -36,7 +36,9 @@ fn main(){
     let (order_producer_shm_reader , order_consumer_bm) = bounded_spsc_queue::make::<Order>(32768);
     let (order_event_producer_bm , order_event_consumer_writter_from_bm) = bounded_spsc_queue::make::<OrderEvents>(32768);
     let (order_event_producer_publisher , order_event_consumer_writter_from_publisher) = bounded_spsc_queue::make::<OrderEvents>(32768);
+    let (order_event_producer_engine , order_event_consumer_writter_from_engine) = bounded_spsc_queue::make::<OrderEvents>(32768);
 
+    
     let shm_reader_handle = std::thread::spawn(move || {
         core_affinity::set_for_current(core_affinity::CoreId { id: 2 });
 
@@ -73,16 +75,16 @@ fn main(){
             0,
             order_consumer_engine,
             fill_producer_engine,
-            event_producer_engine
+            event_producer_engine,
+            order_event_producer_engine
         ).unwrap();
         engine.add_book(0);
         engine.run_engine();
     });
-
-
-
-
     running_engines.push(first_join_handle);
+
+
+
     let pubsub_connection = RedisPubSubManager::new("redis://localhost:6379");
     if pubsub_connection.is_err(){
         panic!("pubsub error , not initialising publisher");
@@ -106,7 +108,8 @@ fn main(){
         core_affinity::set_for_current(core_affinity::CoreId { id: 7 });
         let  shm_writter = ShmWriter::new(
             order_event_consumer_writter_from_bm,
-            order_event_consumer_writter_from_publisher
+            order_event_consumer_writter_from_publisher,
+            order_event_consumer_writter_from_engine
         );
         if shm_writter.is_some(){
             shm_writter.unwrap().start_shm_writter();

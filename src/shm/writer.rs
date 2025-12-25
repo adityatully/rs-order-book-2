@@ -8,18 +8,20 @@ use std::sync::Arc;
 pub struct ShmWriter{
     pub order_event_queue : OrderEventQueue ,
     pub rec_from_bm_try : Consumer<OrderEvents>,
-    pub rec_from_publisher_try : Consumer<OrderEvents>
+    pub rec_from_publisher_try : Consumer<OrderEvents> , 
+    pub rec_from_engine_try : Consumer<OrderEvents>
 }
 
 impl ShmWriter{
-    pub fn new( rec_from_bm_try : Consumer<OrderEvents>,rec_from_publisher_try : Consumer<OrderEvents>)->Option<Self>{
+    pub fn new( rec_from_bm_try : Consumer<OrderEvents>,rec_from_publisher_try : Consumer<OrderEvents> , rec_from_engine_try : Consumer<OrderEvents>)->Option<Self>{
         let order_event_queue = OrderEventQueue::open("/tmp/OrderEvents");
         match order_event_queue {
             Ok(queue)=>{
                 Some(Self{
                     order_event_queue : queue ,
                     rec_from_bm_try , 
-                    rec_from_publisher_try
+                    rec_from_publisher_try , 
+                    rec_from_engine_try
                 })
             }
             Err(_)=>{
@@ -41,6 +43,10 @@ impl ShmWriter{
             if let Some(event) = self.rec_from_publisher_try.try_pop(){
                 let _ = self.order_event_queue.enqueue(event);
                 did_work = true;
+            }
+            if let Some(event) = self.rec_from_engine_try.try_pop(){
+                let _= self.order_event_queue.enqueue(event);
+                did_work = true ;
             }
             if !did_work{
                 std::hint::spin_loop();
