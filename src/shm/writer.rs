@@ -16,7 +16,6 @@ pub struct ShmWriter{
     pub rec_from_bm_try : Consumer<OrderEvents>,
     pub rec_from_publisher_try : Consumer<OrderEvents> , 
     pub rec_from_engine_try : Consumer<OrderEvents>,
-
     pub rec_balance_update : Consumer<BalanceResponse>,
     pub rec_holdings_updates : Consumer<HoldingResponse>,
 }
@@ -82,6 +81,11 @@ impl ShmWriter{
             // THE BALANCE AND THE HOLDINGS EVENTS FOR THE UPDATED BALANCE , HOLDINGS , AFTER EACH TRADE 
             if let Some(balance_updates) = self.rec_balance_update.try_pop(){
                 let _ = self.balance_response_queue.enqueue(balance_updates);
+                did_work = true;
+            }
+
+            if let Some(holding_updates) = self.rec_holdings_updates.try_pop(){
+                let _= self.holding_response_queue.enqueue(holding_updates);
                 did_work = true;
             }
             if !did_work{
