@@ -751,6 +751,7 @@ impl STbalanceManager{
         self.state.user_id_to_index.insert(user_id, idx);
 
         Ok(idx)
+
     }
 
 }

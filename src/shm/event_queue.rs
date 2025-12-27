@@ -27,7 +27,7 @@ pub struct OrderEvents {
     pub order_id: u64,
     pub symbol: u32,
 
-    pub event_kind: u32, // accepted = 0  / partial = 1  / full = 2  / rejected = 3  / canceled = 4 
+    pub event_kind: u32, // accepted = 0  / partial = 1  / full = 2  / rejected = 3  / canceled = 4 / 
 
     pub filled_qty: u32,
     pub remaining_qty: u32,

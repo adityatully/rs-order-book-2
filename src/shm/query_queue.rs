@@ -3,9 +3,6 @@ use std::fs::{self, OpenOptions };
 use std::path::Path;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::os::unix::fs::OpenOptionsExt;
-
-
-
 // QueueHeader with cache-line padding matching Go
 #[repr(C)]
 pub struct QueueHeader {
@@ -16,7 +13,6 @@ pub struct QueueHeader {
     magic: AtomicU32,         // offset 128
     capacity: AtomicU32,      // offset 132
 }
-
 #[repr(C)]
 #[derive(Debug , Clone, Copy)]
 pub struct Query{

@@ -184,17 +184,20 @@ fn main() {
 
 
     let _ = IncomingOrderQueue::create("/tmp/IncomingOrders");
-    let mut trading_system = TradingCore::new(
-        order_event_producer_bm , 
-        event_producer_engine , 
-        order_event_producer_engine,
-        balance_event_producer_bm,
-        holding_event_producer_bm
-    );
-    trading_system.balance_manager.add_throughput_test_users();
-    trading_system.engine.add_book(0);
 
-
+    let trading_core_handle = std::thread::spawn(move ||{
+        core_affinity::set_for_current(core_affinity::CoreId { id: 2 });
+        let mut trading_system = TradingCore::new(
+            order_event_producer_bm , 
+            event_producer_engine , 
+            order_event_producer_engine,
+            balance_event_producer_bm,
+            holding_event_producer_bm
+        );
+        trading_system.balance_manager.add_throughput_test_users();
+        trading_system.engine.add_book(0);
+        trading_system.run();
+    });
 
 
     let pubsub_connection = RedisPubSubManager::new("redis://localhost:6379");
@@ -234,10 +237,10 @@ fn main() {
     
 
     eprintln!("[Main] Initialization complete, starting trading loop");
-    trading_system.run();
+    
     publisher_handle.join().expect("publisher pankicked");
     writter_handle.join().expect("writter panicked");
-
+    trading_core_handle.join().expect("trading core oanicked ");
     println!("System shutdown");
 }
 
