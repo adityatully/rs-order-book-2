@@ -1,8 +1,5 @@
 use bounded_spsc_queue::{Consumer, Producer};
 use crate::{orderbook::{order::Side, types::{DepthData, Event, TickerData, TradeData}}, pubsub::pubsub_manager::RedisPubSubManager, shm::event_queue::{ OrderEvents}};
-use std::{ sync::Arc};
-use crate::singlepsinglecq::my_queue::SpscQueue;
-
 pub struct EventPublisher { 
     pub mypubsub : RedisPubSubManager ,
     pub event_queue_from_engine_try : Consumer<Event>,
@@ -84,7 +81,7 @@ impl EventPublisher {
                     let orignal_qty =  rec_event.market_update.match_result.orignal_qty;
                     let remaining_qty = rec_event.market_update.match_result.remaining_qty;
                     if remaining_qty == 0  {
-                        let _ = self.event_queue_sender_to_writter_try.try_push(OrderEvents {
+                        let _ = self.event_queue_sender_to_writter_try.push(OrderEvents {
                              user_id: rec_event.market_update.match_result.user_id, 
                              order_id: rec_event.market_update.match_result.order_id, 
                              symbol: rec_event.market_update.symbol, 
@@ -96,7 +93,7 @@ impl EventPublisher {
                              });
                     }
                     else if remaining_qty == orignal_qty {
-                        let _ = self.event_queue_sender_to_writter_try.try_push(OrderEvents {
+                        let _ = self.event_queue_sender_to_writter_try.push(OrderEvents {
                             user_id: rec_event.market_update.match_result.user_id, 
                             order_id: rec_event.market_update.match_result.order_id, 
                             symbol: rec_event.market_update.symbol, 
@@ -108,7 +105,7 @@ impl EventPublisher {
                             });
                     }
                     else if orignal_qty - remaining_qty > 0 {
-                        let _ = self.event_queue_sender_to_writter_try.try_push(OrderEvents {
+                        let _ = self.event_queue_sender_to_writter_try.push(OrderEvents {
                             user_id: rec_event.market_update.match_result.user_id, 
                             order_id: rec_event.market_update.match_result.order_id, 
                             symbol: rec_event.market_update.symbol, 

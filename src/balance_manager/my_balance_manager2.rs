@@ -18,7 +18,7 @@ use crate::orderbook::order::{ Order, OrderToBeCanceled, Side};
 use crate::shm::event_queue::OrderEvents;
 use crate::shm::query_queue::{ self, QueryQueue};
 use crate::shm::balance_response_queue::{ BalanceResQueue, BalanceResponse};
-const MAX_USERS: usize = 100; 
+const MAX_USERS: usize = 1000; 
 const MAX_SYMBOLS : usize = 100 ; 
 const DEFAULT_BALANCE : u64 = 10000;
 #[repr(C)]

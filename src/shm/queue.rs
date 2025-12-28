@@ -82,6 +82,8 @@ impl IncomingOrderQueue {
     
         let mut mmap =
             unsafe { MmapMut::map_mut(&file) }.map_err(|e| QueueError::Mmap(e.to_string()))?;
+
+        // creates the virtual memory area , mappig of the pages with the backing file object 
     
         if let Err(e) = mmap.lock() {
             eprintln!("Warning: failed to mlock: {}", e);
@@ -190,6 +192,7 @@ impl IncomingOrderQueue {
     #[inline(always)]
     fn set_order(&self, pos: usize, order: ShmOrder) {
         unsafe {
+            // add takes us to that postion 
             *self.orders_ptr.add(pos) = order;
         }
     }
@@ -230,7 +233,6 @@ impl IncomingOrderQueue {
                 depth: next_head - consumer_tail,
             });
         }
-
         let pos = (producer_head % QUEUE_CAPACITY as u64) as usize;
         self.set_order(pos, order);
 

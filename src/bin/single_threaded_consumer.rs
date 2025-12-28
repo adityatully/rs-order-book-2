@@ -2,7 +2,12 @@ use rust_orderbook_2::{
     balance_manager::my_balance_manager2::STbalanceManager, engine::my_engine::{Engine, STEngine}, orderbook::{order::Order, types::Event}, shm::{balance_response_queue::BalanceResponse, holdings_response_queue::HoldingResponse, reader::StShmReader}
 };
 use std::time::Instant;
-use rust_orderbook_2::shm::queue::IncomingOrderQueue;
+use rust_orderbook_2::shm::queue::{IncomingOrderQueue};
+use rust_orderbook_2::shm::balance_response_queue::BalanceResQueue;
+use rust_orderbook_2::shm::cancel_orders_queue::CancelOrderQueue;
+use rust_orderbook_2::shm::event_queue::OrderEventQueue;
+use rust_orderbook_2::shm::holdings_response_queue::HoldingResQueue;
+use rust_orderbook_2::shm::query_queue::QueryQueue;
 use bounded_spsc_queue::Producer;
 use rust_orderbook_2::shm::event_queue::OrderEvents;
 use rust_orderbook_2::pubsub::pubsub_manager::RedisPubSubManager;
@@ -175,6 +180,17 @@ impl TradingCore {
 
 #[hotpath::main]
 fn main() {
+
+    let _ = IncomingOrderQueue::create("/tmp/IncomingOrders").expect("failed to create queue");
+    let _ = CancelOrderQueue::create("/tmp/CancelOrders").expect("failed to create queue");
+    let _ = OrderEventQueue::create("/tmp/OrderEvents").expect("failed to create queue");
+    let _ = QueryQueue::create("/tmp/Queries").expect("failed to create queue");
+    let _ = HoldingResQueue::create("/tmp/HoldingsResponse").expect("failed to create queue");
+    let _ = BalanceResQueue::create("/tmp/BalanceResponse").expect("failed to open queue");
+
+
+
+
     let (order_event_producer_bm , order_event_consumer_writter_from_bm) = bounded_spsc_queue::make::<OrderEvents>(32678);
     let (event_producer_engine , event_consumer_publisher) = bounded_spsc_queue::make::<Event>(32678);
     let (order_event_producer_publisher , order_event_consumer_writter_from_publisher) = bounded_spsc_queue::make::<OrderEvents>(32768);

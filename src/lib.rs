@@ -5,3 +5,4 @@ pub mod shm ;
 pub mod balance_manager;
 pub mod singlepsinglecq;
 pub mod pubsub;
+pub mod logger;

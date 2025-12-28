@@ -12,7 +12,7 @@ pub struct ShmWriter{
     pub balance_response_queue : BalanceResQueue,
     pub holding_response_queue : HoldingResQueue,
 
-
+    
     pub rec_from_bm_try : Consumer<OrderEvents>,
     pub rec_from_publisher_try : Consumer<OrderEvents> , 
     pub rec_from_engine_try : Consumer<OrderEvents>,
@@ -62,22 +62,6 @@ impl ShmWriter{
     pub fn start_shm_writter(&mut self){
         loop {
             let mut did_work = false;
-            // new code 
-            // THE INSUFFICIENT FUND EVENT 
-            if let Some(event) = self.rec_from_bm_try.try_pop(){
-                let _ = self.order_event_queue.enqueue(event);
-                did_work = true;
-            }
-            // THE ORDER EVENT FOR USER TOO SEE , THE RESULT OF HIS PLACED ORDER 
-            if let Some(event) = self.rec_from_publisher_try.try_pop(){
-                let _ = self.order_event_queue.enqueue(event);
-                did_work = true;
-            }
-            // THE SUCCESSFULL CANCELLATION OF ORDER EVENT 
-            if let Some(event) = self.rec_from_engine_try.try_pop(){
-                let _= self.order_event_queue.enqueue(event);
-                did_work = true ;
-            }
             // THE BALANCE AND THE HOLDINGS EVENTS FOR THE UPDATED BALANCE , HOLDINGS , AFTER EACH TRADE 
             if let Some(balance_updates) = self.rec_balance_update.try_pop(){
                 let _ = self.balance_response_queue.enqueue(balance_updates);
@@ -88,11 +72,25 @@ impl ShmWriter{
                 let _= self.holding_response_queue.enqueue(holding_updates);
                 did_work = true;
             }
+            // THE ORDER EVENT FOR USER TOO SEE , THE RESULT OF HIS PLACED ORDER 
+            if let Some(event) = self.rec_from_publisher_try.try_pop(){
+                let _ = self.order_event_queue.enqueue(event);
+                did_work = true;
+            }
+            // THE INSUFFICIENT FUND EVENT 
+            if let Some(event) = self.rec_from_bm_try.try_pop(){
+                let _ = self.order_event_queue.enqueue(event);
+                did_work = true;
+            }
+            // THE SUCCESSFULL CANCELLATION OF ORDER EVENT 
+            if let Some(event) = self.rec_from_engine_try.try_pop(){
+                let _= self.order_event_queue.enqueue(event);
+                did_work = true ;
+            }
+            
             if !did_work{
                 std::hint::spin_loop();
             }
-
-
         }
     }
 
