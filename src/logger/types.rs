@@ -1,3 +1,5 @@
+
+
 // order recived 
 // order rejcted 
 // order matched 
@@ -7,7 +9,7 @@
 // severity 0-> info (from components) 1-> error , 2 -> Debug 
 const PAYLOAD_SIZE : usize  = 67;
 
-#[derive( Debug, Clone, Copy)]
+#[derive( Debug, Clone, Copy , serde::Serialize)]
 pub struct OrderLogs{
     pub event_id               : u64 ,
     pub order_id               : u64 ,
@@ -24,7 +26,7 @@ pub struct OrderLogs{
 
 
 
-#[derive( Debug, Clone, Copy)]
+#[derive( Debug, Clone, Copy , serde::Serialize)]
 pub struct BalanceLogs{
     pub event_id               : u64 ,
     pub user_id                : u64 ,
@@ -41,7 +43,7 @@ pub struct BalanceLogs{
 // 67 bytes 
 
 
-#[derive( Debug, Clone, Copy)]
+#[derive( Debug, Clone, Copy , serde::Serialize)]
 pub struct HoldingsLogs{
     pub event_id                : u64 ,
     pub user_id                 : u64 ,
@@ -58,7 +60,7 @@ pub struct HoldingsLogs{
 }
 // 55 bytes 
 
-#[derive( Debug, Clone)]
+#[derive( Debug, Clone , serde::Serialize)]
 pub struct OrderBookSnapShot{
     pub event_id               : u64 ,
     pub symbol                 : u32 , 
@@ -76,7 +78,6 @@ pub enum Logs{
     OrderLogs(OrderLogs),
     BalanceLogs(BalanceLogs),
     HoldingsLogs(HoldingsLogs),
-    OrderBookSnapShot(OrderBookSnapShot),
 }
 
 
@@ -85,8 +86,8 @@ pub enum Logs{
 #[derive( Debug, Clone, Copy)]
 pub struct SerialisedLogEntry{
     pub event_id    : u64 ,
-    pub event_type  : u64 , 
+    pub event_type  : u64 ,  // 0 ->  bakance log , 1-> order log , 2-> hoding change log 
     pub timestamp   : i64  ,
-    pub payload_len : u16,
     pub payload     : [u8; PAYLOAD_SIZE],
+    pub payload_len : u16,
 }

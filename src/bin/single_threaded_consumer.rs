@@ -1,5 +1,5 @@
 use rust_orderbook_2::{
-    balance_manager::my_balance_manager2::STbalanceManager, engine::my_engine::{Engine, STEngine}, logger::types::Logs, orderbook::{order::Order, types::Event}, shm::{balance_response_queue::BalanceResponse, holdings_response_queue::HoldingResponse, reader::StShmReader}
+    balance_manager::my_balance_manager2::STbalanceManager, engine::my_engine::{Engine, STEngine}, logger::{log_reciever::LogReciever, types::Logs}, orderbook::{order::Order, types::Event}, shm::{balance_response_queue::BalanceResponse, holdings_response_queue::HoldingResponse, reader::StShmReader}
 };
 use std::time::Instant;
 use rust_orderbook_2::shm::queue::{IncomingOrderQueue};
@@ -255,6 +255,12 @@ fn main() {
             eprintln!("error initialising shm writter")
         }
     });
+
+    let log_reciver_handle = std::thread::spawn(move||{
+        core_affinity::set_for_current(core_affinity::CoreId { id: 3 });
+        let mut log_reciver = LogReciever::new(log_consumer_logger);
+        log_reciver.run();
+    });
     
 
     eprintln!("[Main] Initialization complete, starting trading loop");
@@ -262,6 +268,7 @@ fn main() {
     publisher_handle.join().expect("publisher pankicked");
     writter_handle.join().expect("writter panicked");
     trading_core_handle.join().expect("trading core oanicked ");
+    log_reciver_handle.join().expect("log eciver panicked");
     println!("System shutdown");
 }
 
