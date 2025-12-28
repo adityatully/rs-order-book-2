@@ -1,21 +1,34 @@
 use bounded_spsc_queue::Consumer;
 use chrono::Utc;
-use crate::{logger::types::{Logs, }, shm::order_log_queue::OrderLogQueue};
+use crate::{logger::types::Logs, shm::{balance_log_queue::BalanceLogQueue, holdings_log_queue::{self, HoldingLogQueue}, order_log_queue::OrderLogQueue}};
 const PAYLOAD_SIZE : usize = 67 ;
 pub struct LogReciever{
     pub order_log_shm_queue : OrderLogQueue,
+    pub balance_log_shm_queue : BalanceLogQueue ,
+    pub holding_log_shm_queue : HoldingLogQueue ,
     pub logs_recv_from_core : Consumer<Logs>
 }
 
 impl LogReciever{
     pub fn new(logs_recv_from_core : Consumer<Logs>)->Self{
-        let log_shm_queue = LogQueue::open("/tmp/Logs");
-        if log_shm_queue.is_err(){
+        let order_log_shm_queue = OrderLogQueue::open("/tmp/Logs");
+        let balance_log_shm_queue = BalanceLogQueue::open("/tmp/BalanceLogs");
+        let holdings_log_queue = HoldingLogQueue::open("/tmp/HoldingLogs");
+        if order_log_shm_queue.is_err(){
             eprintln!("failed to open the log queue");
         }
+        if balance_log_shm_queue.is_err(){
+            eprintln!("failed to open the log queue");
+        }
+        if holdings_log_queue.is_err(){
+            eprintln!("failed to open the log queue");
+        }
+
         Self{
-            log_shm_queue : log_shm_queue.unwrap(),
-            logs_recv_from_core 
+            order_log_shm_queue : order_log_shm_queue.unwrap(),
+            balance_log_shm_queue : balance_log_shm_queue.unwrap(),
+            holding_log_shm_queue : holdings_log_queue.unwrap(),
+            logs_recv_from_core  
         }
     }
 
@@ -25,61 +38,13 @@ impl LogReciever{
                 // first we serialise it into a log entry 
                 match log{
                     Logs::BalanceLogs(balance_log)=>{
-                        match serde_json::to_vec(&balance_log){
-                            Ok(data)=>{
-                                let len = data.len();
-                                let data_entry : [u8 ; PAYLOAD_SIZE] = data.try_into().expect("coundt convert vector into array");
-                                let log_entry = SerialisedLogEntry{
-                                    event_id : balance_log.event_id , 
-                                    event_type : 0 ,
-                                    timestamp : Utc::now().timestamp(),
-                                    payload : data_entry,
-                                    payload_len : len as u16
-                                };
-                                let _= self.log_shm_queue.enqueue(log_entry);
-                            }
-                            Err(_)=>{
-                                eprint!("SERIALISATION ERROR")
-                            }
-                        }
+                        let _ = self.balance_log_shm_queue.enqueue(balance_log);
                     } ,
                     Logs::HoldingsLogs(holding_log)=>{
-                        match serde_json::to_vec(&holding_log){
-                            Ok(data)=>{
-                                let len = data.len();
-                                let data_entry : [u8 ; PAYLOAD_SIZE] = data.try_into().expect("coundt convert vector into array");
-                                let log_entry = SerialisedLogEntry{
-                                    event_id : holding_log.event_id , 
-                                    event_type : 1 ,
-                                    timestamp : Utc::now().timestamp(),
-                                    payload : data_entry,
-                                    payload_len : len as u16
-                                };
-                                let _= self.log_shm_queue.enqueue(log_entry);
-                            }
-                            Err(_)=>{
-                                eprint!("SERIALISATION ERROR")
-                            }
-                        }
+                        let _ = self.holding_log_shm_queue.enqueue(holding_log);
                     } , 
                     Logs::OrderLogs(order_log)=>{
-                        match serde_json::to_vec(&order_log){
-                            Ok(data)=>{
-                                let len = data.len();
-                                let data_entry : [u8 ; PAYLOAD_SIZE] = data.try_into().expect("coundt convert vector into array");
-                                let log_entry = SerialisedLogEntry{
-                                    event_id : order_log.event_id , 
-                                    event_type : 2 ,
-                                    timestamp : Utc::now().timestamp(),
-                                    payload : data_entry,
-                                    payload_len : len as u16
-                                };
-                                let _= self.log_shm_queue.enqueue(log_entry);
-                            }
-                            Err(_)=>{
-                                eprint!("SERIALISATION ERROR")
-                            }
-                        }
+                        let _ = self.order_log_shm_queue.enqueue(order_log);
                     }
                 }
             }

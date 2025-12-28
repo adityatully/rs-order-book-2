@@ -1,6 +1,6 @@
 use chrono::Utc;
 use rust_orderbook_2::{
-    balance_manager::my_balance_manager2::{BalanceManagerRes, STbalanceManager}, engine::my_engine::{Engine, STEngine}, logger::{log_reciever::LogReciever, types::{BalanceLogs, HoldingsLogs, Logs, OrderLogs}}, orderbook::{order::Order, types::Event}, shm::{balance_response_queue::BalanceResponse, holdings_response_queue::HoldingResponse, reader::StShmReader}
+    balance_manager::my_balance_manager2::{BalanceManagerRes, STbalanceManager}, engine::my_engine::{Engine, STEngine}, logger::{log_reciever::LogReciever, types::{BalanceLogs, HoldingsLogs, Logs, OrderLogs}}, orderbook::{order::Order, types::Event}, shm::{balance_log_queue::BalanceLogQueue, balance_response_queue::BalanceResponse, holdings_log_queue::HoldingLogQueue, holdings_response_queue::HoldingResponse, reader::StShmReader}
 };
 use std::time::Instant;
 use rust_orderbook_2::shm::queue::{IncomingOrderQueue};
@@ -13,7 +13,7 @@ use bounded_spsc_queue::Producer;
 use rust_orderbook_2::shm::event_queue::OrderEvents;
 use rust_orderbook_2::pubsub::pubsub_manager::RedisPubSubManager;
 use rust_orderbook_2::shm::writer::ShmWriter;
-use rust_orderbook_2::shm::order_log_queue::LogQueue;
+use rust_orderbook_2::shm::order_log_queue::OrderLogQueue;
 use rust_orderbook_2::publisher::event_publisher::EventPublisher;
 use rust_orderbook_2::orderbook::order::Side;
 
@@ -306,7 +306,8 @@ fn main() {
     let _ = HoldingResQueue::create("/tmp/HoldingsResponse").expect("failed to create queue");
     let _ = BalanceResQueue::create("/tmp/BalanceResponse").expect("failed to open queue");
     let _ = OrderLogQueue::create("/tmp/OrderLogs").expect("failed to create the Log queue");
-    
+    let _ = BalanceLogQueue::create("/tmp/BalanceLogs").expect("failed to open balance log queue");
+    let _ = HoldingLogQueue::create("/tmp/HoldingLogs").expect("failed to open holding queues");
 
 
 

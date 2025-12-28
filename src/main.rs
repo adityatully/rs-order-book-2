@@ -8,7 +8,6 @@ use rust_orderbook_2::publisher::event_publisher::EventPublisher;
 use core_affinity;
 use rust_orderbook_2::pubsub::pubsub_manager::RedisPubSubManager;
 use rust_orderbook_2::shm::holdings_response_queue::{HoldingResQueue, HoldingResponse};
-use rust_orderbook_2::shm::order_log_queue::LogQueue;
 use rust_orderbook_2::shm::queue::IncomingOrderQueue;
 use rust_orderbook_2::shm::cancel_orders_queue::CancelOrderQueue;
 use rust_orderbook_2::shm::event_queue::{OrderEventQueue, OrderEvents};
@@ -28,7 +27,6 @@ fn main(){
     let _ = QueryQueue::create("/tmp/Queries").expect("failed to create queue");
     let _ = HoldingResQueue::create("/tmp/HoldingsResponse").expect("failed to create queue");
     let _ = BalanceResQueue::create("/tmp/BalanceResponse").expect("failed to open queue");
-    let _ = LogQueue::create("/tmp/Logs").expect("failed to open the Log queue");
 
     
     let (fill_producer_engine , fill_consumer_bm ) = bounded_spsc_queue::make::<Fills>(32768);
