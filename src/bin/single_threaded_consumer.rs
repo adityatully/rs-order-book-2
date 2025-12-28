@@ -1,5 +1,6 @@
+use chrono::Utc;
 use rust_orderbook_2::{
-    balance_manager::my_balance_manager2::STbalanceManager, engine::my_engine::{Engine, STEngine}, logger::{log_reciever::LogReciever, types::Logs}, orderbook::{order::Order, types::Event}, shm::{balance_response_queue::BalanceResponse, holdings_response_queue::HoldingResponse, reader::StShmReader}
+    balance_manager::my_balance_manager2::{BalanceManagerRes, STbalanceManager}, engine::my_engine::{Engine, STEngine}, logger::{log_reciever::LogReciever, types::{BalanceLogs, HoldingsLogs, Logs, OrderLogs}}, orderbook::{order::Order, types::Event}, shm::{balance_response_queue::BalanceResponse, holdings_response_queue::HoldingResponse, reader::StShmReader}
 };
 use std::time::Instant;
 use rust_orderbook_2::shm::queue::{IncomingOrderQueue};
@@ -14,6 +15,17 @@ use rust_orderbook_2::pubsub::pubsub_manager::RedisPubSubManager;
 use rust_orderbook_2::shm::writer::ShmWriter;
 use rust_orderbook_2::shm::logger_queue::LogQueue;
 use rust_orderbook_2::publisher::event_publisher::EventPublisher;
+use rust_orderbook_2::orderbook::order::Side;
+
+static mut EVENT_ID: u64 = 1;
+fn next_event_id() -> u64 {
+    unsafe {
+        let id = EVENT_ID;
+        EVENT_ID += 1;
+        id
+    }
+}
+
 pub struct TradingCore {
     pub balance_manager: STbalanceManager,
     pub shm_reader: StShmReader,
@@ -48,7 +60,30 @@ impl TradingCore {
             self.order_batch.clear();
             for _ in 0 ..1000{
                 if let Some(order) = self.shm_reader.receive_order() {
+                    // some order recved 
+                    self.log_sender_to_logger.push(Logs::OrderLogs(OrderLogs{
+                        event_id : next_event_id() ,
+                        order_id : order.order_id ,
+                        user_id : order.user_id ,
+                        price : order.price ,
+                        symbol : order.symbol ,
+                        shares_qty : order.shares_qty ,
+                        timestamp : Utc::now().timestamp(),
+                        side : match order.side{
+                            Side::Bid =>{
+                                0
+                            }
+                            Side::Ask=>{
+                                1
+                            }
+                        },
+                        order_event_type : 0 ,
+                        severity : 0 , 
+                        source : 0 
+                        
+                    }));
                     self.order_batch.push(order);       
+                    
                 }
                 else {
                     break;
@@ -56,15 +91,72 @@ impl TradingCore {
             }
             for order in self.order_batch.drain(..){
                 match self.balance_manager.check_and_lock_funds(order) {
-                    Ok(_) => {
+                    Ok(balance_response_for_logger) => {
+                        // balances have been locked or holding shave been reserved 
+                        match balance_response_for_logger {
+                            BalanceManagerRes::BalanceUpdateResForLogger(balance_update_info)=>{
+                                self.log_sender_to_logger.push(Logs::BalanceLogs(BalanceLogs{
+                                    event_id : next_event_id() ,
+                                    user_id : order.user_id ,
+                                    old_available_balance : balance_update_info.old_available_balance ,
+                                    new_available_balance : balance_update_info.new_available_balance ,
+                                    old_reserved_balance  : balance_update_info.old_reserved_balance,
+                                    new_reserved_balance : balance_update_info.new_reserved_balance ,
+                                    reason : 0 ,
+                                    order_id : order.order_id , 
+                                    timestamp : Utc::now().timestamp() ,
+                                    severity : 0 ,
+                                    source : 1
+                                }));
+                            }
+                            BalanceManagerRes::HoldingUpdateResForLogger(holding_update_info)=>{
+                                self.log_sender_to_logger.try_push(Logs::HoldingsLogs(HoldingsLogs {
+                                     event_id: next_event_id() , 
+                                     user_id: order.user_id, 
+                                     symbol: order.symbol, 
+                                     old_reserved_holding: holding_update_info.old_reserved_holding, 
+                                     new_reserved_holding: holding_update_info.new_reserved_holding, 
+                                     old_available_holding: holding_update_info.old_available_holding, 
+                                     new_available_holding: holding_update_info.new_available_holding, 
+                                     reason: 0, 
+                                     order_id: order.order_id, 
+                                     timestamp:  Utc::now().timestamp(), 
+                                     severity: 0, 
+                                     source: 1 
+                                    }));
+                            }
+                        }
+                        
                         // Process order in engine
                         let engine_res = self.engine.process_order(order) ; 
                         match engine_res.0 {
                             Some(match_result) => {
+                                // log that order has been matched 
+                                self.log_sender_to_logger.push(Logs::OrderLogs(OrderLogs{
+                                    event_id : next_event_id() ,
+                                    order_id : order.order_id ,
+                                    user_id : order.user_id ,
+                                    price : order.price ,
+                                    symbol : order.symbol ,
+                                    shares_qty : order.shares_qty ,
+                                    timestamp : Utc::now().timestamp(),
+                                    side : match order.side{
+                                        Side::Bid =>{
+                                            0
+                                        }
+                                        Side::Ask=>{
+                                            1
+                                        }
+                                    },
+                                    order_event_type : 1 ,
+                                    severity : 0 , 
+                                    source : 2 
+                                    
+                                }));
                                 // Update balances from fills
                                 if let Err(e) = self.balance_manager
                                     .update_balances_after_trade(match_result.fills)
-
+                                // to do add logging here also when balance changes for consistanc 
                                 {
                                     
                                     eprintln!("[Trading Core] Balance update error: {:?}", e);
@@ -88,6 +180,28 @@ impl TradingCore {
                         self.processed_count += 1;
                     }
                     Err(_) => {
+                        // log that order has been rejected 
+                        self.log_sender_to_logger.push(Logs::OrderLogs(OrderLogs{
+                            event_id : next_event_id() ,
+                            order_id : order.order_id ,
+                            user_id : order.user_id ,
+                            price : order.price ,
+                            symbol : order.symbol ,
+                            shares_qty : order.shares_qty ,
+                            timestamp : Utc::now().timestamp(),
+                            side : match order.side{
+                                Side::Bid =>{
+                                    0
+                                }
+                                Side::Ask=>{
+                                    1
+                                }
+                            },
+                            order_event_type : 2 ,
+                            severity : 0 , 
+                            source : 1 
+                            
+                        }));
                         // Order rejected (insufficient funds, etc)
                         let _ = self.balance_manager.events_to_wrriter_try.try_push(
                             OrderEvents { 

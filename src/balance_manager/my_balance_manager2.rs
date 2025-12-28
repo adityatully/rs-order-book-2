@@ -451,6 +451,26 @@ pub fn run_balance_manager(&mut self) {
     
 }
 
+
+pub struct BalanceUpdateResForLogger{
+    pub old_reserved_balance   : u64 , 
+    pub old_available_balance  : u64 , 
+    pub new_reserved_balance   : u64 , 
+    pub new_available_balance  : u64 ,
+}
+
+pub struct HoldingUpdateResForLogger{
+    pub symbol                  : u32 ,
+    pub old_reserved_holding    : u32 , 
+    pub new_reserved_holding    : u32 , 
+    pub old_available_holding   : u32 , 
+    pub new_available_holding   : u32 , 
+}
+
+pub enum BalanceManagerRes{
+    BalanceUpdateResForLogger(BalanceUpdateResForLogger),
+    HoldingUpdateResForLogger(HoldingUpdateResForLogger)
+}
 pub struct STbalanceManager{
     state : BalanceState,
     pub query_queue : QueryQueue,
@@ -504,7 +524,7 @@ impl STbalanceManager{
         &mut self.state.holdings[user_index as usize]
     }
     #[inline(always)]
-    pub fn check_and_lock_funds(&mut self , order : Order)->Result<() , BalanceManagerError>{
+    pub fn check_and_lock_funds(&mut self , order : Order)->Result<BalanceManagerRes , BalanceManagerError>{
         // currently for limit orders , we get an order 
         // we have user id , symbol , side , holfings 
         let user_index = self.get_user_index(order.user_id)?; 
@@ -512,6 +532,7 @@ impl STbalanceManager{
           // fatal error , return immidieately to the function who is calling
         
         match order.side {
+
             Side::Ask =>{
                 let holdings = self.get_user_holdings(user_index);
                 // wants to sell 
@@ -524,6 +545,14 @@ impl STbalanceManager{
                 
                 holdings.available_holdings[order.symbol as usize] = avalable_holdings_for_symbol - order.shares_qty;
                 holdings.reserved_holdings[order.symbol as usize] = reserved_holdings_for_symbol + order.shares_qty;
+
+                return Ok(BalanceManagerRes::HoldingUpdateResForLogger(HoldingUpdateResForLogger { 
+                    symbol: order.symbol, 
+                    old_reserved_holding: reserved_holdings_for_symbol, 
+                    new_reserved_holding: reserved_holdings_for_symbol + order.shares_qty, 
+                    old_available_holding: avalable_holdings_for_symbol, 
+                    new_available_holding: avalable_holdings_for_symbol - order.shares_qty 
+                }));
             }
             Side::Bid =>{
                 // wants to buy  , if balacne > price * qty , we can rserve 
@@ -538,10 +567,18 @@ impl STbalanceManager{
                 }
                 // we can reserv and and pass on the order to the matching egnine 
                 balance.available_balance = avalaible_balance - required_balance;
-                balance.reserved_balance = reserved_balance + required_balance;   
+                balance.reserved_balance = reserved_balance + required_balance;  
+
+
+                return Ok(BalanceManagerRes::BalanceUpdateResForLogger(BalanceUpdateResForLogger{ 
+                    old_reserved_balance: reserved_balance, 
+                    old_available_balance: avalaible_balance, 
+                    new_reserved_balance: reserved_balance + required_balance  , 
+                    new_available_balance: avalaible_balance - required_balance
+                }) );
             }
         }
-        Ok(())
+        
     }
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     #[inline(always)]
