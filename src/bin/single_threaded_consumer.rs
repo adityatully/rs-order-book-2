@@ -13,7 +13,7 @@ use bounded_spsc_queue::Producer;
 use rust_orderbook_2::shm::event_queue::OrderEvents;
 use rust_orderbook_2::pubsub::pubsub_manager::RedisPubSubManager;
 use rust_orderbook_2::shm::writer::ShmWriter;
-use rust_orderbook_2::shm::logger_queue::LogQueue;
+use rust_orderbook_2::shm::order_log_queue::LogQueue;
 use rust_orderbook_2::publisher::event_publisher::EventPublisher;
 use rust_orderbook_2::orderbook::order::Side;
 
@@ -61,7 +61,7 @@ impl TradingCore {
             for _ in 0 ..1000{
                 if let Some(order) = self.shm_reader.receive_order() {
                     // some order recved 
-                    self.log_sender_to_logger.push(Logs::OrderLogs(OrderLogs{
+                    self.log_sender_to_logger.try_push(Logs::OrderLogs(OrderLogs{
                         event_id : next_event_id() ,
                         order_id : order.order_id ,
                         user_id : order.user_id ,
@@ -95,7 +95,7 @@ impl TradingCore {
                         // balances have been locked or holding shave been reserved 
                         match balance_response_for_logger {
                             BalanceManagerRes::BalanceUpdateResForLogger(balance_update_info)=>{
-                                self.log_sender_to_logger.push(Logs::BalanceLogs(BalanceLogs{
+                                self.log_sender_to_logger.try_push(Logs::BalanceLogs(BalanceLogs{
                                     event_id : next_event_id() ,
                                     user_id : order.user_id ,
                                     old_available_balance : balance_update_info.old_available_balance ,
@@ -132,7 +132,7 @@ impl TradingCore {
                         match engine_res.0 {
                             Some(match_result) => {
                                 // log that order has been matched 
-                                self.log_sender_to_logger.push(Logs::OrderLogs(OrderLogs{
+                                self.log_sender_to_logger.try_push(Logs::OrderLogs(OrderLogs{
                                     event_id : next_event_id() ,
                                     order_id : order.order_id ,
                                     user_id : order.user_id ,
@@ -181,7 +181,7 @@ impl TradingCore {
                     }
                     Err(_) => {
                         // log that order has been rejected 
-                        self.log_sender_to_logger.push(Logs::OrderLogs(OrderLogs{
+                        self.log_sender_to_logger.try_push(Logs::OrderLogs(OrderLogs{
                             event_id : next_event_id() ,
                             order_id : order.order_id ,
                             user_id : order.user_id ,
@@ -203,7 +203,7 @@ impl TradingCore {
                             
                         }));
                         // Order rejected (insufficient funds, etc)
-                        let _ = self.balance_manager.events_to_wrriter_try.try_push(
+                        let _ = self.balance_manager.events_to_wrriter_try.push(
                             OrderEvents { 
                                 user_id: order.user_id,
                                 order_id: order.order_id,
@@ -305,7 +305,8 @@ fn main() {
     let _ = QueryQueue::create("/tmp/Queries").expect("failed to create queue");
     let _ = HoldingResQueue::create("/tmp/HoldingsResponse").expect("failed to create queue");
     let _ = BalanceResQueue::create("/tmp/BalanceResponse").expect("failed to open queue");
-    let _ = LogQueue::create("tmp/Logs").expect("failed to open the Log queue");
+    let _ = OrderLogQueue::create("/tmp/OrderLogs").expect("failed to create the Log queue");
+    
 
 
 
@@ -317,7 +318,6 @@ fn main() {
     let (holding_event_producer_bm , holding_event_consumer_writter) = bounded_spsc_queue::make::<HoldingResponse>(32768);
     let (log_producer_core , log_consumer_logger)=bounded_spsc_queue::make::<Logs>(32786);
 
-    let _ = IncomingOrderQueue::create("/tmp/IncomingOrders");
 
     let trading_core_handle = std::thread::spawn(move ||{
         core_affinity::set_for_current(core_affinity::CoreId { id: 2 });

@@ -1,9 +1,9 @@
 use bounded_spsc_queue::Consumer;
 use chrono::Utc;
-use crate::{logger::types::{Logs, SerialisedLogEntry}, shm::logger_queue::LogQueue};
+use crate::{logger::types::{Logs, }, shm::order_log_queue::OrderLogQueue};
 const PAYLOAD_SIZE : usize = 67 ;
 pub struct LogReciever{
-    pub log_shm_queue : LogQueue,
+    pub order_log_shm_queue : OrderLogQueue,
     pub logs_recv_from_core : Consumer<Logs>
 }
 

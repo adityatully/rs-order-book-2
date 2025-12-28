@@ -9,20 +9,22 @@
 // severity 0-> info (from components) 1-> error , 2 -> Debug 
 const PAYLOAD_SIZE : usize  = 67;
 
-#[derive( Debug, Clone, Copy , serde::Serialize)]
+
+#[repr(C)]
+#[derive( Debug, Clone, Copy )]
 pub struct OrderLogs{
     pub event_id               : u64 ,
     pub order_id               : u64 ,
     pub user_id                : u64 ,
     pub price                  : u64 , 
+    pub timestamp              : i64 , 
     pub symbol                 : u32 ,
     pub shares_qty             : u32 ,
-    pub timestamp              : i64 , 
     pub side                   : u8 ,
     pub order_event_type             : u8 ,   // 0 order recived at SHM reader , 1->order matched , 2 -> order canceled log 
     pub severity               : u8 , 
     pub source                 : u8 , 
-} // 52 bytes 
+} // 52 bytes  
 
 
 
@@ -81,12 +83,3 @@ pub enum Logs{
 }
 
 
-#[repr(C)]
-#[derive( Debug, Clone, Copy)]
-pub struct SerialisedLogEntry{
-    pub event_id    : u64 ,
-    pub event_type  : u64 ,  // 0 ->  bakance log , 1-> order log , 2-> hoding change log 
-    pub timestamp   : i64  ,
-    pub payload     : [u8; PAYLOAD_SIZE],
-    pub payload_len : u16,
-}

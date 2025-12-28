@@ -6,7 +6,8 @@ use std::fs::{self, OpenOptions };
 use std::path::Path;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::os::unix::fs::OpenOptionsExt;
-use crate::logger::types::SerialisedLogEntry;
+use crate::logger::types::BalanceLogs;
+
 
 // QueueHeader with cache-line padding matching Go
 #[repr(C)]
@@ -18,15 +19,15 @@ pub struct QueueHeader {
     magic: AtomicU32,         // offset 128
     capacity: AtomicU32,      // offset 132
 }
-const QUEUE_MAGIC: u32 = 0xDEA;
+const QUEUE_MAGIC: u32 = 0xDEE;
 // reduce size 
 const QUEUE_CAPACITY: usize = 65536;
-const LOG_SIZE: usize = std::mem::size_of::<SerialisedLogEntry>();
+const LOG_SIZE: usize = std::mem::size_of::<BalanceLogs>();
 const HEADER_SIZE: usize = std::mem::size_of::<QueueHeader>();
 const TOTAL_SIZE: usize = HEADER_SIZE + (QUEUE_CAPACITY * LOG_SIZE);
 
 // Compile-time layout assertions (fail build if wrong)
-const _: () = assert!(LOG_SIZE == 96, "Order must be 96 bytes");
+const _: () = assert!(LOG_SIZE == 72, "Order must be 72 bytes");
 const _: () = assert!(HEADER_SIZE == 136, "QueueHeader must be 136 bytes");
 const _: () = {
     // Verify ConsumerTail is at offset 64
@@ -37,13 +38,13 @@ const _: () = {
 };
 
 #[derive(Debug)]
-pub struct LogQueue {
+pub struct BalanceLogQueue {
     mmap: MmapMut,
     header_ptr: *mut QueueHeader,           // Cached pointer
-    log_ptr: *mut SerialisedLogEntry,       // Cached logs pointer
+    log_ptr: *mut BalanceLogs,       // Cached logs pointer
 }
 
-impl LogQueue {
+impl BalanceLogQueue {
     pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, QueueError> {
         let _ = fs::remove_file(&path);
         let file = OpenOptions::new()
@@ -89,10 +90,10 @@ impl LogQueue {
             .map_err(|e| QueueError::Flush(e.to_string()))?;
     
         let log_ptr = unsafe {
-            mmap.as_mut_ptr().add(HEADER_SIZE) as *mut SerialisedLogEntry
+            mmap.as_mut_ptr().add(HEADER_SIZE) as *mut BalanceLogs
         };
     
-        Ok(LogQueue {
+        Ok(BalanceLogQueue {
             mmap,
             header_ptr,
             log_ptr,
@@ -125,7 +126,7 @@ impl LogQueue {
 
         // Cache both pointers
         let header_ptr = { mmap.as_mut_ptr() as *mut QueueHeader };
-        let log_ptr = unsafe { mmap.as_mut_ptr().add(HEADER_SIZE) as *mut SerialisedLogEntry };
+        let log_ptr = unsafe { mmap.as_mut_ptr().add(HEADER_SIZE) as *mut BalanceLogs };
 
         // Validate
         let header = unsafe { &*header_ptr };
@@ -142,7 +143,7 @@ impl LogQueue {
             });
         }
 
-        Ok(LogQueue {
+        Ok(BalanceLogQueue {
             mmap,
             header_ptr,
             log_ptr,
@@ -163,13 +164,13 @@ impl LogQueue {
 
     /// Get order at position - ZERO COST pointer arithmetic
     #[inline(always)]
-    fn get_log_response(&self, pos: usize) -> SerialisedLogEntry {
+    fn get_log_response(&self, pos: usize) -> BalanceLogs {
         unsafe { *self.log_ptr.add(pos) }
     }
 
     /// Set order at position - ZERO COST pointer arithmetic
     #[inline(always)]
-    fn set_log_response(&self, pos: usize, response: SerialisedLogEntry) {
+    fn set_log_response(&self, pos: usize, response: BalanceLogs) {
         unsafe {
             *self.log_ptr.add(pos) = response;
         }
@@ -177,7 +178,7 @@ impl LogQueue {
 
     /// ULTRA-FAST dequeue - all pointers cached, no borrows
     #[inline]
-    pub fn dequeue(&mut self) -> Result<Option<SerialisedLogEntry>, QueueError> {
+    pub fn dequeue(&mut self) -> Result<Option<BalanceLogs>, QueueError> {
         let header = self.header_mut();
 
         let producer_head = header.producer_head.load(Ordering::Acquire);
@@ -198,7 +199,7 @@ impl LogQueue {
         Ok(Some(log))
     }
 
-    pub fn enqueue(&mut self, log: SerialisedLogEntry) -> Result<(), QueueError> {
+    pub fn enqueue(&mut self, log: BalanceLogs) -> Result<(), QueueError> {
         let header = self.header_mut();
 
         let consumer_tail = header.consumer_tail.load(Ordering::Acquire);
@@ -237,7 +238,7 @@ impl LogQueue {
             .map_err(|e| QueueError::Flush(e.to_string()))
     }
 
-    pub fn dequeue_spin(&mut self, max_spins: usize) -> Result<Option<SerialisedLogEntry>, QueueError> {
+    pub fn dequeue_spin(&mut self, max_spins: usize) -> Result<Option<BalanceLogs>, QueueError> {
         for _ in 0..max_spins {
             match self.dequeue()? {
                 Some(order) => return Ok(Some(order)),
@@ -248,7 +249,7 @@ impl LogQueue {
     }
 }
 
-impl Drop for LogQueue {
+impl Drop for BalanceLogQueue {
     fn drop(&mut self) {
         // Flush before closing
         let _ = self.mmap.flush();
@@ -298,6 +299,6 @@ impl std::fmt::Display for QueueError {
 impl std::error::Error for QueueError {}
 
 // Thread-safe: Queue can be sent between threads
-unsafe impl Send for LogQueue {}
+unsafe impl Send for BalanceLogQueue {}
 // Not Sync: only one thread should access at a time (SPSC model)
 
