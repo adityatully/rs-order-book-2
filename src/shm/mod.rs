@@ -6,3 +6,4 @@ pub mod event_queue;
 pub mod balance_response_queue;
 pub mod holdings_response_queue;
 pub mod writer;
+pub mod logger_queue;

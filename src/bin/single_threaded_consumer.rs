@@ -1,5 +1,5 @@
 use rust_orderbook_2::{
-    balance_manager::my_balance_manager2::STbalanceManager, engine::my_engine::{Engine, STEngine}, orderbook::{order::Order, types::Event}, shm::{balance_response_queue::BalanceResponse, holdings_response_queue::HoldingResponse, reader::StShmReader}
+    balance_manager::my_balance_manager2::STbalanceManager, engine::my_engine::{Engine, STEngine}, logger::types::Logs, orderbook::{order::Order, types::Event}, shm::{balance_response_queue::BalanceResponse, holdings_response_queue::HoldingResponse, reader::StShmReader}
 };
 use std::time::Instant;
 use rust_orderbook_2::shm::queue::{IncomingOrderQueue};
@@ -12,6 +12,7 @@ use bounded_spsc_queue::Producer;
 use rust_orderbook_2::shm::event_queue::OrderEvents;
 use rust_orderbook_2::pubsub::pubsub_manager::RedisPubSubManager;
 use rust_orderbook_2::shm::writer::ShmWriter;
+use rust_orderbook_2::shm::logger_queue::LogQueue;
 use rust_orderbook_2::publisher::event_publisher::EventPublisher;
 pub struct TradingCore {
     pub balance_manager: STbalanceManager,
@@ -19,7 +20,8 @@ pub struct TradingCore {
     pub engine: STEngine,
     processed_count: u64,
     last_log: Instant,
-    order_batch : Vec<Order>
+    order_batch : Vec<Order> , 
+    pub log_sender_to_logger : Producer<Logs>
 }
 impl TradingCore {
     pub fn new(
@@ -27,7 +29,8 @@ impl TradingCore {
         event_sender_to_publisher_by_engine : Producer<Event> , 
         order_event_producer_engine : Producer<OrderEvents>,
         balance_event_producer_bm : Producer<BalanceResponse>,
-        holding_event_producer_bm : Producer<HoldingResponse>
+        holding_event_producer_bm : Producer<HoldingResponse>,
+        log_sender_to_logger : Producer<Logs>
     ) -> Self {
         Self {
             balance_manager: STbalanceManager::new(event_sender_to_writter , balance_event_producer_bm , holding_event_producer_bm),
@@ -35,7 +38,8 @@ impl TradingCore {
             engine: STEngine::new(0 , event_sender_to_publisher_by_engine , order_event_producer_engine),
             processed_count: 0,
             last_log: Instant::now(),
-            order_batch : Vec::with_capacity(1000)
+            order_batch : Vec::with_capacity(1000),
+            log_sender_to_logger
         }
     }
     pub fn run(&mut self) {
@@ -187,7 +191,7 @@ fn main() {
     let _ = QueryQueue::create("/tmp/Queries").expect("failed to create queue");
     let _ = HoldingResQueue::create("/tmp/HoldingsResponse").expect("failed to create queue");
     let _ = BalanceResQueue::create("/tmp/BalanceResponse").expect("failed to open queue");
-
+    let _ = LogQueue::create("tmp/Logs").expect("failed to open the Log queue");
 
 
 
@@ -197,7 +201,7 @@ fn main() {
     let (order_event_producer_engine , order_event_consumer_writter_from_engine) = bounded_spsc_queue::make::<OrderEvents>(32768);
     let (balance_event_producer_bm , balance_event_consumer_writter) = bounded_spsc_queue::make::<BalanceResponse>(32768);
     let (holding_event_producer_bm , holding_event_consumer_writter) = bounded_spsc_queue::make::<HoldingResponse>(32768);
-
+    let (log_producer_core , log_consumer_logger)=bounded_spsc_queue::make::<Logs>(32786);
 
     let _ = IncomingOrderQueue::create("/tmp/IncomingOrders");
 
@@ -208,7 +212,8 @@ fn main() {
             event_producer_engine , 
             order_event_producer_engine,
             balance_event_producer_bm,
-            holding_event_producer_bm
+            holding_event_producer_bm,
+            log_producer_core
         );
         trading_system.balance_manager.add_throughput_test_users();
         trading_system.engine.add_book(0);

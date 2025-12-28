@@ -12,13 +12,14 @@ pub struct ShmWriter{
     pub balance_response_queue : BalanceResQueue,
     pub holding_response_queue : HoldingResQueue,
 
-    
+
     pub rec_from_bm_try : Consumer<OrderEvents>,
     pub rec_from_publisher_try : Consumer<OrderEvents> , 
     pub rec_from_engine_try : Consumer<OrderEvents>,
     pub rec_balance_update : Consumer<BalanceResponse>,
     pub rec_holdings_updates : Consumer<HoldingResponse>,
 }
+
 
 impl ShmWriter{
     pub fn new( rec_from_bm_try : Consumer<OrderEvents>,
