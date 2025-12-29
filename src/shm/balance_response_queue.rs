@@ -11,11 +11,9 @@ use std::os::unix::fs::OpenOptionsExt;
 #[repr(C)]
 #[derive(Debug , Clone, Copy)]
 pub struct BalanceResponse{
-    pub query_id : u64,
-    pub user_id : u64 ,
-    pub response_type : u8 , // 0  is balance and 1 is useer added
-    pub _pad : [u8;47],
-    pub response : UserBalance // 64 bytes 
+    pub user_id : u64 , 
+    pub delta_available_balance : i64 ,
+    pub delta_reserved_balance  : i64 ,
 }
 // QueueHeader with cache-line padding matching Go
 #[repr(C)]
@@ -37,7 +35,7 @@ const HEADER_SIZE: usize = std::mem::size_of::<QueueHeader>();
 const TOTAL_SIZE: usize = HEADER_SIZE + (QUEUE_CAPACITY * ORDER_SIZE);
 
 // Compile-time layout assertions (fail build if wrong)
-const _: () = assert!(ORDER_SIZE == 128, "Order must be 128 bytes");
+const _: () = assert!(ORDER_SIZE == 24, "Order must be 24 bytes");
 const _: () = assert!(HEADER_SIZE == 136, "QueueHeader must be 136 bytes");
 const _: () = {
     // Verify ConsumerTail is at offset 64
