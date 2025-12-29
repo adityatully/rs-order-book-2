@@ -467,12 +467,21 @@ pub struct HoldingUpdateResForLogger{
     pub new_available_holding   : u32 , 
 }
 
-pub enum BalanceManagerRes{
+pub enum BalanceManagerResForLocking{
     BalanceUpdateResForLogger(BalanceUpdateResForLogger),
     HoldingUpdateResForLogger(HoldingUpdateResForLogger)
 }
+
+pub struct BalanceManagerResForUpdation{
+    pub balance_update_taker : BalanceUpdateResForLogger,
+    pub holding_update_taker : HoldingUpdateResForLogger,
+    pub balance_update_maker : BalanceUpdateResForLogger,
+    pub holding_update_maker : HoldingUpdateResForLogger
+}
 pub struct STbalanceManager{
     state : BalanceState,
+
+
     pub query_queue : QueryQueue,
     pub events_to_wrriter_try : Producer<OrderEvents> , 
 
@@ -523,8 +532,14 @@ impl STbalanceManager{
     pub fn get_user_holdings(&mut self , user_index : u32)->&mut UserHoldings{
         &mut self.state.holdings[user_index as usize]
     }
+    pub fn get_i64(&mut self ,ip : u64)->Result<i64, std::num::TryFromIntError>{
+        i64::try_from(ip)
+    }
+    pub fn get_i32(&mut self ,ip : u32)->Result<i32, std::num::TryFromIntError>{
+        i32::try_from(ip)
+    }
     #[inline(always)]
-    pub fn check_and_lock_funds(&mut self , order : Order)->Result<BalanceManagerRes , BalanceManagerError>{
+    pub fn check_and_lock_funds(&mut self , order : Order)->Result<BalanceManagerResForLocking , BalanceManagerError>{
         // currently for limit orders , we get an order 
         // we have user id , symbol , side , holfings 
         let user_index = self.get_user_index(order.user_id)?; 
@@ -546,7 +561,7 @@ impl STbalanceManager{
                 holdings.available_holdings[order.symbol as usize] = avalable_holdings_for_symbol - order.shares_qty;
                 holdings.reserved_holdings[order.symbol as usize] = reserved_holdings_for_symbol + order.shares_qty;
 
-                return Ok(BalanceManagerRes::HoldingUpdateResForLogger(HoldingUpdateResForLogger { 
+                return Ok(BalanceManagerResForLocking::HoldingUpdateResForLogger(HoldingUpdateResForLogger { 
                     symbol: order.symbol, 
                     old_reserved_holding: reserved_holdings_for_symbol, 
                     new_reserved_holding: reserved_holdings_for_symbol + order.shares_qty, 
@@ -570,7 +585,7 @@ impl STbalanceManager{
                 balance.reserved_balance = reserved_balance + required_balance;  
 
 
-                return Ok(BalanceManagerRes::BalanceUpdateResForLogger(BalanceUpdateResForLogger{ 
+                return Ok(BalanceManagerResForLocking::BalanceUpdateResForLogger(BalanceUpdateResForLogger{ 
                     old_reserved_balance: reserved_balance, 
                     old_available_balance: avalaible_balance, 
                     new_reserved_balance: reserved_balance + required_balance  , 
@@ -589,125 +604,140 @@ impl STbalanceManager{
             let maker_index = self.get_user_index(fill.maker_user_id)?;
             let taker_index = self.get_user_index(fill.taker_user_id)?;
             let fill_value = fill.price * fill.quantity as u64;
-            let mut maker_balance_update = BalanceResponse { 
-                query_id: 0, 
-                user_id: fill.maker_user_id, 
-                response_type: 0,
-                 _pad: [0;47], 
-                 response:UserBalance::default()
-            };
-            let mut taker_balance_update = BalanceResponse { 
-                query_id: 0, 
-                user_id: fill.taker_user_id, 
-                response_type: 0,
-                 _pad: [0;47], 
-                 response:UserBalance::default()
-            };
-
-            let mut taker_holdings_update = HoldingResponse{
-                query_id : 0 ,
-                user_id  : fill.taker_user_id,
-                response : UserHoldings::default()
-            };
-
-            let mut maker_holdings_update = HoldingResponse{
-                query_id : 0 ,
-                user_id  : fill.maker_user_id,
-                response : UserHoldings::default()
-            };
+            
 
 
-            match fill.taker_side {
+            let (taker_balance_update ,  
+                taker_holding_update  , 
+                maker_balance_update ,
+                maker_holding_update
+            )  = match fill.taker_side {
                 Side::Ask => {
                     // Taker is selling , jo order aya was sell order , order book pe(maker) buy order 
                     // add money , he sold 
-                    
-                    
-                    {
+                    // sell order tha , execute hogya 
+                        
                         let  taker_balance = self.get_user_balance(taker_index);
                         let taker_avail_bal = taker_balance.available_balance;
                         taker_balance.available_balance = taker_avail_bal + fill_value;
-                        taker_balance_update.response.available_balance = taker_balance.available_balance;
-                        taker_balance_update.response.reserved_balance = taker_balance.reserved_balance;
 
-                    }
+                        // balacne updates for the go cache 
+                        let taker_balance_update = BalanceResponse{
+                            user_id : fill.taker_user_id,
+                            delta_available_balance : self.get_i64(fill_value).unwrap(),
+                            delta_reserved_balance : 0 
+                        };
 
                         // remove holdings from resevred
-                    {   
+                       
                         let  taker_holdings = self.get_user_holdings(taker_index);
                         let taker_reserved_holdings = taker_holdings.reserved_holdings[fill.symbol as usize];
                         taker_holdings.reserved_holdings[fill.symbol as usize] = taker_reserved_holdings - fill.quantity;
-                        taker_holdings_update.response.reserved_holdings[fill.symbol as usize] = taker_holdings.reserved_holdings[fill.symbol as usize];
-                        taker_holdings_update.response.available_holdings[fill.symbol as usize] = taker_holdings.available_holdings[fill.symbol as usize];
-                    }
 
-                    {   
+                        // holding update for the go cache 
+                        let taker_holding_update = HoldingResponse{
+                            user_id : fill.taker_user_id ,
+                            symbol : fill.symbol ,
+                            delta_available_holding : 0 , 
+                            delta_reserved_holding : -self.get_i32(fill.quantity).unwrap()
+                        };
+                    
+                        
                         let  maker_balance = self.get_user_balance(maker_index);
                         let maker_reserved_bal = maker_balance.reserved_balance;
                         maker_balance.reserved_balance= maker_reserved_bal - fill_value;
-                        maker_balance_update.response.available_balance = maker_balance.available_balance;
-                        maker_balance_update.response.reserved_balance = maker_balance.reserved_balance;
-                    }
+
+                        // balance update for the go cache 
+                        let maker_balance_update = BalanceResponse{
+                            user_id : fill.maker_user_id ,
+                            delta_available_balance : 0 , 
+                            delta_reserved_balance : -self.get_i64(fill_value).unwrap()
+                        };
+                    
 
                         // add shares , he bough 
-                    {
                         let  maker_holdings = self.get_user_holdings(maker_index);
                         let maker_avail_holdings = maker_holdings.available_holdings[fill.symbol as usize];
                         maker_holdings.available_holdings[fill.symbol as usize]= maker_avail_holdings + fill.quantity;
-                        maker_holdings_update.response.available_holdings[fill.symbol as usize] = maker_holdings.available_holdings[fill.symbol as usize];
-                        maker_holdings_update.response.reserved_holdings[fill.symbol as usize] = maker_holdings.reserved_holdings[fill.symbol as usize];
-                    }
-                        
+
+                        // holding update for the go cache 
+                        let maker_holding_update = HoldingResponse{
+                            user_id : fill.maker_user_id , 
+                            symbol : fill.symbol ,
+                            delta_available_holding : self.get_i32(fill.quantity).unwrap(),
+                            delta_reserved_holding : 0 
+                        };
+                    
+                    (taker_balance_update , taker_holding_update , maker_balance_update , maker_holding_update)
+                         
                 }   
                 
                 Side::Bid => {
                     // Taker is buying , incoming is a buying order 
 
-                    { 
-                        let  taker_balance = self.get_user_balance(taker_index);
-                        let taker_reserved_bal = taker_balance.reserved_balance;
-                        taker_balance.reserved_balance= taker_reserved_bal - fill_value;
-                        taker_balance_update.response.available_balance = taker_balance.available_balance;
-                        taker_balance_update.response.reserved_balance = taker_balance.reserved_balance;
-                    }
+                       let  taker_balance = self.get_user_balance(taker_index);
+                       let taker_reserved_bal = taker_balance.reserved_balance;
+                       taker_balance.reserved_balance= taker_reserved_bal - fill_value;
 
+                       let taker_balance_update = BalanceResponse{
+                        user_id : fill.taker_user_id , 
+                        delta_available_balance : 0 ,
+                        delta_reserved_balance : -self.get_i64(fill_value).unwrap()
+                       };
 
-                    {
-                        let  taker_holdings = self.get_user_holdings(taker_index);
-                        let taker_avail_holdings = taker_holdings.available_holdings[fill.symbol as usize];
-                        taker_holdings.available_holdings[fill.symbol as usize]= taker_avail_holdings + fill.quantity;
-                        taker_holdings_update.response.reserved_holdings[fill.symbol as usize] = taker_holdings.reserved_holdings[fill.symbol as usize];
-                        taker_holdings_update.response.available_holdings[fill.symbol as usize] = taker_holdings.available_holdings[fill.symbol as usize];
-                    }
-
-                    {   let  maker_balance = self.get_user_balance(maker_index);
-                        let maker_avail_bal = maker_balance.available_balance;
-                        maker_balance.available_balance= maker_avail_bal + fill_value;
-                        maker_balance_update.response.available_balance = maker_balance.available_balance;
-                        maker_balance_update.response.reserved_balance = maker_balance.reserved_balance;
-                    }
-                
-
-                    {
-                        let  maker_holdings = self.get_user_holdings(maker_index);
-                        let maker_reserved_holdings = maker_holdings.reserved_holdings[fill.symbol as usize];
-                        maker_holdings.reserved_holdings[fill.symbol as usize]= maker_reserved_holdings - fill.quantity;
-                        maker_holdings_update.response.available_holdings[fill.symbol as usize] = maker_holdings.available_holdings[fill.symbol as usize];
-                        maker_holdings_update.response.reserved_holdings[fill.symbol as usize] = maker_holdings.reserved_holdings[fill.symbol as usize];
+                       
                     
-                    }
+                    
+                       let  taker_holdings = self.get_user_holdings(taker_index);
+                       let taker_avail_holdings = taker_holdings.available_holdings[fill.symbol as usize];
+                       taker_holdings.available_holdings[fill.symbol as usize]= taker_avail_holdings + fill.quantity;
+
+                       let taker_holding_update = HoldingResponse{
+                            user_id : fill.taker_user_id , 
+                            symbol : fill.symbol ,
+                            delta_available_holding : self.get_i32(fill.quantity).unwrap(),
+                            delta_reserved_holding : 0
+                       };
+                       
+                    
+                       let  maker_balance = self.get_user_balance(maker_index);
+                       let maker_avail_bal = maker_balance.available_balance;
+                       maker_balance.available_balance= maker_avail_bal + fill_value;
+
+                      let maker_balance_update = BalanceResponse{
+                        user_id : fill.maker_user_id , 
+                        delta_available_balance : self.get_i64(fill_value).unwrap(),
+                        delta_reserved_balance : 0 
+                      };
+                    
+            
+                    
+                       let  maker_holdings = self.get_user_holdings(maker_index);
+                       let maker_reserved_holdings = maker_holdings.reserved_holdings[fill.symbol as usize];
+                       maker_holdings.reserved_holdings[fill.symbol as usize]= maker_reserved_holdings - fill.quantity;
+
+
+                       let maker_holding_update = HoldingResponse{
+                        user_id : fill.maker_user_id , 
+                        symbol : fill.symbol , 
+                        delta_available_holding : 0 , 
+                        delta_reserved_holding : -self.get_i32(fill.quantity).unwrap()
+                       };
+                       
+                       (taker_balance_update , taker_holding_update , maker_balance_update , maker_holding_update)
+                        
                 }
-            }
+            };
 
             // send udates to the writter for the maker and the taker indexes 
             let _ = self.balance_updates_sender.push(maker_balance_update);
             let _ = self.balance_updates_sender.push(taker_balance_update);
-            let _ = self.holding_update_sender.push(maker_holdings_update);
-            let _ = self.holding_update_sender.push(taker_holdings_update);
+            let _ = self.holding_update_sender.push(maker_holding_update);
+            let _ = self.holding_update_sender.push(taker_holding_update);
             
         }
-        
         Ok(())
+        
     }
 
     pub fn add_throughput_test_users(&mut self) {
