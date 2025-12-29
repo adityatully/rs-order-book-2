@@ -12,6 +12,8 @@ const PAYLOAD_SIZE : usize  = 67;
 
 #[repr(C)]
 #[derive( Debug, Clone, Copy )]
+
+
 pub struct OrderLogs{
     pub event_id               : u64 ,
     pub order_id               : u64 ,
@@ -83,3 +85,45 @@ pub enum Logs{
 }
 
 
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct BalanceDelta{
+    pub event_id: u64,
+    pub user_id: u64,
+    pub delta_available: i64,
+    pub delta_reserved: i64,
+    pub reason: u8,     
+    pub order_id: u64,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct HoldingDelta {
+    pub event_id: u64,
+    pub user_id: u64,
+    pub symbol: u32,
+    pub delta_available: i32,
+    pub delta_reserved: i32,
+    pub reason: u8,
+    pub order_id: u64,
+}
+
+
+pub struct OrderDelta{
+    pub event_id               : u64 ,
+    pub order_id               : u64 ,
+    pub user_id                : u64 ,
+    pub price                  : u64 , 
+    pub symbol                 : u32 ,
+    pub shares_qty             : u32 ,
+    pub side                   : u8 ,
+    pub order_event_type       : u8 ,   // 0 order recived at SHM reader , 1->order matched , 2 -> order canceled log 
+}
+
+
+pub enum BaseLogs{
+    BalanceDelta(BalanceDelta) ,
+    HoldingDelta(HoldingDelta) ,
+    OrderDelta(OrderDelta)
+}

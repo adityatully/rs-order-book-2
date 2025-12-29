@@ -11,6 +11,7 @@
 // avalable means free balance or holdings that can be reserved 
 use bounded_spsc_queue::{Consumer, Producer};
 use crossbeam_utils::Backoff;
+use crate::logger::types::{BalanceDelta, HoldingDelta};
 use crate::shm::holdings_response_queue::{HoldingResQueue, HoldingResponse};
 use dashmap::DashMap;
 use crate::orderbook::types::{BalanceManagerError, Fills, };
@@ -292,12 +293,9 @@ impl MyBalanceManager2{
                 // he was buying , his ballcne wud have been reserved 
                 let old_reserved_balance = self.get_user_balance(user_index).reserved_balance;
                 let old_available_balance = self.get_user_balance(user_index).available_balance;
-
-
                 self.state.balances[user_index as usize].available_balance = old_available_balance + price*qty as u64;
                 self.state.balances[user_index as usize].reserved_balance = old_reserved_balance - price*qty as u64;
                 
-               
             }
         };
 
@@ -450,34 +448,22 @@ pub fn run_balance_manager(&mut self) {
     
     
 }
-
-
-pub struct BalanceUpdateResForLogger{
-    pub old_reserved_balance   : u64 , 
-    pub old_available_balance  : u64 , 
-    pub new_reserved_balance   : u64 , 
-    pub new_available_balance  : u64 ,
-}
-
-pub struct HoldingUpdateResForLogger{
-    pub symbol                  : u32 ,
-    pub old_reserved_holding    : u32 , 
-    pub new_reserved_holding    : u32 , 
-    pub old_available_holding   : u32 , 
-    pub new_available_holding   : u32 , 
-}
-
 pub enum BalanceManagerResForLocking{
-    BalanceUpdateResForLogger(BalanceUpdateResForLogger),
-    HoldingUpdateResForLogger(HoldingUpdateResForLogger)
+    BalanceManagerResUpdateDeltaBalance(BalanceManagerResUpdateDeltaBalance),
+    BalanceManagerResUpdateDeltaHolding(BalanceManagerResUpdateDeltaHolding)
 }
 
-pub struct BalanceManagerResForUpdation{
-    pub balance_update_taker : BalanceUpdateResForLogger,
-    pub holding_update_taker : HoldingUpdateResForLogger,
-    pub balance_update_maker : BalanceUpdateResForLogger,
-    pub holding_update_maker : HoldingUpdateResForLogger
+pub struct BalanceManagerResUpdateDeltaBalance{
+    pub delta_available_balance : i64 ,
+    pub delta_reserved_balance  : i64 ,
 }
+
+pub struct BalanceManagerResUpdateDeltaHolding{
+    pub delta_available_holding  : i32 ,
+    pub delta_reserved_holding   : i32
+}
+
+
 pub struct STbalanceManager{
     state : BalanceState,
 
@@ -561,12 +547,9 @@ impl STbalanceManager{
                 holdings.available_holdings[order.symbol as usize] = avalable_holdings_for_symbol - order.shares_qty;
                 holdings.reserved_holdings[order.symbol as usize] = reserved_holdings_for_symbol + order.shares_qty;
 
-                return Ok(BalanceManagerResForLocking::HoldingUpdateResForLogger(HoldingUpdateResForLogger { 
-                    symbol: order.symbol, 
-                    old_reserved_holding: reserved_holdings_for_symbol, 
-                    new_reserved_holding: reserved_holdings_for_symbol + order.shares_qty, 
-                    old_available_holding: avalable_holdings_for_symbol, 
-                    new_available_holding: avalable_holdings_for_symbol - order.shares_qty 
+                return Ok(BalanceManagerResForLocking::BalanceManagerResUpdateDeltaHolding(BalanceManagerResUpdateDeltaHolding{
+                    delta_available_holding : -self.get_i32(order.shares_qty).unwrap(),
+                    delta_reserved_holding : self.get_i32(order.shares_qty).unwrap()
                 }));
             }
             Side::Bid =>{
@@ -585,13 +568,12 @@ impl STbalanceManager{
                 balance.reserved_balance = reserved_balance + required_balance;  
 
 
-                return Ok(BalanceManagerResForLocking::BalanceUpdateResForLogger(BalanceUpdateResForLogger{ 
-                    old_reserved_balance: reserved_balance, 
-                    old_available_balance: avalaible_balance, 
-                    new_reserved_balance: reserved_balance + required_balance  , 
-                    new_available_balance: avalaible_balance - required_balance
-                }) );
+                return Ok(BalanceManagerResForLocking::BalanceManagerResUpdateDeltaBalance(BalanceManagerResUpdateDeltaBalance { 
+                    delta_available_balance: -self.get_i64(required_balance).unwrap(), 
+                    delta_reserved_balance: self.get_i64(required_balance).unwrap()
+                }));
             }
+            
         }
         
     }
@@ -686,8 +668,6 @@ impl STbalanceManager{
                        };
 
                        
-                    
-                    
                        let  taker_holdings = self.get_user_holdings(taker_index);
                        let taker_avail_holdings = taker_holdings.available_holdings[fill.symbol as usize];
                        taker_holdings.available_holdings[fill.symbol as usize]= taker_avail_holdings + fill.quantity;
