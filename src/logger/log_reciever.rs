@@ -1,5 +1,6 @@
 use bounded_spsc_queue::Consumer;
-use crate::{logger::types::BaseLogs, shm::{balance_log_queue::BalanceLogQueue, holdings_log_queue::{self, HoldingLogQueue}, order_log_queue::OrderLogQueue}};
+use crate::{logger::types::{BalanceLogWrapper, BaseLogs, HoldingLogWrapper, OrderLogWrapper}, shm::{balance_log_queue::BalanceLogQueue, holdings_log_queue::{self, HoldingLogQueue}, order_log_queue::OrderLogQueue}};
+use std::time::{SystemTime, UNIX_EPOCH};
 pub struct LogReciever{
     pub order_log_shm_queue : OrderLogQueue,
     pub balance_log_shm_queue : BalanceLogQueue ,
@@ -33,16 +34,37 @@ impl LogReciever{
     pub fn run(&mut self){
         loop {
             if let Some(log) = self.logs_recv_from_core.try_pop(){
-                // first we serialise it into a log entry 
+                // we get the deltas , we need to wrap them
                 match log{
-                    BaseLogs::BalanceDelta(_)=>{
-
+                    BaseLogs::BalanceDelta(balance_delta)=>{
+                        let _ = self.balance_log_shm_queue.enqueue(BalanceLogWrapper{
+                            balance_delta : balance_delta ,
+                            timestamp : SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_nanos() as i64,
+                            severity  : 0 
+                        });
                     }
-                    BaseLogs::HoldingDelta(_)=>{
-
+                    BaseLogs::HoldingDelta(holdings_delta)=>{
+                        let _ = self.holding_log_shm_queue.enqueue(HoldingLogWrapper{
+                            holding_delta : holdings_delta ,
+                            timestamp : SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_nanos() as i64 , 
+                            severity : 0 
+                        });
                     }
-                    BaseLogs::OrderDelta(_)=>{
-
+                    BaseLogs::OrderDelta(order_delta)=>{
+                        let _ = self.order_log_shm_queue.enqueue(OrderLogWrapper{
+                            order_delta : order_delta ,
+                            timestamp : SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_nanos() as i64,
+                            severity  : 0
+                        });
                     }
                 }
             }

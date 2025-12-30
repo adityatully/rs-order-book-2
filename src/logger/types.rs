@@ -13,8 +13,6 @@ pub struct OrderLogWrapper{
     pub timestamp              : i64 , 
     pub order_delta            : OrderDelta,
     pub severity               : u8 , 
-    pub source                 : u8 , 
-  
 } 
 
 
@@ -24,7 +22,6 @@ pub struct BalanceLogWrapper{
     pub balance_delta          : BalanceDelta,
     pub timestamp              : i64 , 
     pub severity               : u8 , 
-    pub source                 : u8 , 
 }
 // 67 bytes 
 
@@ -34,8 +31,6 @@ pub struct HoldingLogWrapper{
     pub timestamp               : i64 ,
     pub holding_delta           : HoldingDelta,
     pub severity                : u8 , 
-    pub source                  : u8 , 
-   
 }
 
 
