@@ -124,6 +124,7 @@ impl OrderBook{
 
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn match_bid(&mut self , order: &mut Order)->Result<MatchResult , OrderBookError>{
+        println!("inside matching function match bid");
         let orignal_shares_qty = order.shares_qty;
        // println!("recived the order , matching now");
        self.fill_buffer.clear();
@@ -135,9 +136,11 @@ impl OrderBook{
                 Some(price) => price,
                 None => break
             };
+            println!("best price for opposite side is {:?}" , best_price);
             if best_price > order.price{
                 break;
             }
+            println!("no match");
 
             let empty = {
                 let level = opposite_side.levels.get_mut(&best_price).unwrap();
@@ -226,6 +229,7 @@ impl OrderBook{
     }
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn match_ask(&mut self , order: &mut Order)->Result<MatchResult , OrderBookError>{
+        println!("inside the matching function , match ask");
         let orignal_shares_qty = order.shares_qty;
        // println!("recived the order , matching now");
        // let mut fills = Fills::new();
@@ -234,10 +238,13 @@ impl OrderBook{
         // we have a bid to match , the best price shud be the loweest ask 
         
         while order.shares_qty > 0 {
+            
             let best_price = match opposite_side.get_best_price(){
                 Some(price) => price,
                 None => break
             };
+            println!("bid side best price {:?}" , best_price);
+            println!("offered price was more than the best bid , no match");
             if best_price < order.price{
                 break;
             }

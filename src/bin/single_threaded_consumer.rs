@@ -30,7 +30,6 @@ pub struct TradingCore {
     pub shm_reader: StShmReader,
     pub engine: STEngine,
     processed_count: u64,
-    last_log: Instant,
     order_batch : Vec<Order> , 
     pub log_sender_to_logger : Producer<BaseLogs>
 }
@@ -48,7 +47,6 @@ impl TradingCore {
             shm_reader: StShmReader::new().unwrap(),
             engine: STEngine::new(0 , event_sender_to_publisher_by_engine , order_event_producer_engine),
             processed_count: 0,
-            last_log: Instant::now(),
             order_batch : Vec::with_capacity(1000),
             log_sender_to_logger
         }
@@ -60,6 +58,7 @@ impl TradingCore {
             for _ in 0 ..1000{
                 if let Some(order) = self.shm_reader.receive_order() {
                     // some order recved 
+                    println!("order recived {:?}" , order);
                     self.log_sender_to_logger.try_push(BaseLogs::OrderDelta(OrderDelta{
                         event_id : next_event_id(),
                         order_id : order.order_id ,
@@ -83,6 +82,7 @@ impl TradingCore {
             for order in self.order_batch.drain(..){
                 match self.balance_manager.check_and_lock_funds(order) {
                     Ok(balance_response_for_logger) => {
+                        println!("balances have been locked and holdings reserved it ws valid order");
                         // balances have been locked or holding shave been reserved 
                         match balance_response_for_logger {
                             BalanceManagerResForLocking::BalanceManagerResUpdateDeltaBalance(balance_delta)=>{
@@ -114,6 +114,8 @@ impl TradingCore {
                         match engine_res.0 {
                             Some(match_result) => {
                                 // log that order has been matched 
+                                println!("{:?}" , match_result);
+                                println!("logging that order has been matched ");
                                 self.log_sender_to_logger.try_push(BaseLogs::OrderDelta(OrderDelta { 
                                     event_id: next_event_id(), 
                                     order_id: order.order_id, 
@@ -144,6 +146,7 @@ impl TradingCore {
 
                         match engine_res.1 {
                             Some(market_update)=>{
+                                println!("sending data to publisher");
                                let _ = self.engine.sending_event_to_publisher_try.try_push(Event::new(market_update));
                             }
                             None=>{
@@ -154,6 +157,7 @@ impl TradingCore {
                         self.processed_count += 1;
                     }
                     Err(_) => {
+                        println!("insufficient funds");
                         // log that order has been rejected 
                         self.log_sender_to_logger.try_push(BaseLogs::OrderDelta(OrderDelta { 
                             event_id: next_event_id(), 
@@ -231,7 +235,7 @@ impl TradingCore {
                     match query.query_type{
                         2 => {
                             let _= self.balance_manager.add_user(query.user_id);
-                            
+
                         }
                         _=>{
 
@@ -240,24 +244,7 @@ impl TradingCore {
                 }
                 Ok(None)=>{}
                 Err(_)=>{}
-            }
-
-            if self.last_log.elapsed().as_secs() >= 2 {
-                let elapsed = self.last_log.elapsed();
-                let rate = self.processed_count as f64 / elapsed.as_secs_f64();
-                
-                eprintln!(
-                    "[Trading Core] {:.2}M orders/sec ({} orders in {:.2}s)",
-                    rate / 1_000_000.0,
-                    self.processed_count,
-                    elapsed.as_secs_f64()
-                );
-                
-                self.processed_count = 0;
-                self.last_log = Instant::now();
-            }
-
-        
+            }        
         }
     }
 }
