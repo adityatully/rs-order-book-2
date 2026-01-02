@@ -346,20 +346,32 @@ impl OrderBook{
         let mut bids = Vec::new();
         let mut asks = Vec::new();
 
-        for level in LevelsWithCumalativeDepth::new(&self.askside.levels, Side::Ask){
-            asks.push(
-               [
-                level.price.to_string() , level.qty.to_string() , level.cumalative_depth.to_string()
-               ] 
-            );
+        {
+            let mut cumalative_depth = 0u32;
+            for (price , level) in self.askside.levels.iter().rev(){
+                let qty =  level.get_total_volume();
+                cumalative_depth += qty;
+
+                asks.push([
+                    price.to_string(),
+                    qty.to_string(),
+                    cumalative_depth.to_string(),
+                ]);
+            }
         }
 
-        for level in LevelsWithCumalativeDepth::new(&self.bidside.levels, Side::Bid){
-            bids.push(
-               [
-                level.price.to_string() , level.qty.to_string() , level.cumalative_depth.to_string()
-               ] 
-            );
+        {
+            let mut cumalative_depth = 0u32;
+            for (price, level) in self.bidside.levels.iter() {
+                let qty = level.get_total_volume();
+                cumalative_depth += qty;
+    
+                bids.push([
+                    price.to_string(),
+                    qty.to_string(),
+                    cumalative_depth.to_string(),
+                ]);
+            }
         }
 
         (asks , bids)

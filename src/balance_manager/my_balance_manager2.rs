@@ -25,7 +25,7 @@ const DEFAULT_BALANCE : u64 = 10000;
 const DEFAULT_HOLDING_QTY: u32 = 100;
 
 #[repr(C)]
-#[repr(align(64))]  
+#[repr(align(64))]
 #[derive(Debug , Clone, Copy)]
 pub struct UserBalance {
     pub user_id: u64,   // 8        
