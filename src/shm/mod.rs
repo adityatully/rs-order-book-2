@@ -9,3 +9,4 @@ pub mod writer;
 pub mod order_log_queue;
 pub mod balance_log_queue;
 pub mod holdings_log_queue;
+pub mod trade_log_queue;

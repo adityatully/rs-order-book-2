@@ -1,5 +1,6 @@
 use std::thread::JoinHandle;
 use rust_orderbook_2::balance_manager::my_balance_manager2::{ MyBalanceManager2};
+use rust_orderbook_2::logger::types::TradeLogs;
 use rust_orderbook_2::orderbook::order::Order;
 use rust_orderbook_2::orderbook::types::Fills;
 use rust_orderbook_2::orderbook::{types::Event};
@@ -38,6 +39,7 @@ fn main(){
     let (order_event_producer_engine , order_event_consumer_writter_from_engine) = bounded_spsc_queue::make::<OrderEvents>(32768);
     let (balance_event_producer_bm , balance_event_consumer_writter) = bounded_spsc_queue::make::<BalanceResponse>(32768);
     let (holding_event_producer_bm , holding_event_consumer_writter) = bounded_spsc_queue::make::<HoldingResponse>(32768);
+    let (trade_log_producer_publisher , trade_log_consumer_logger)= bounded_spsc_queue::make::<TradeLogs>(32768);
 
     let shm_reader_handle = std::thread::spawn(move || {
         core_affinity::set_for_current(core_affinity::CoreId { id: 2 });
@@ -100,7 +102,7 @@ fn main(){
             pubsub_connection.unwrap() , 
             
             event_consumer_publisher,
-            order_event_producer_publisher
+            order_event_producer_publisher , trade_log_producer_publisher
         );
 
         my_publisher.start_publisher();

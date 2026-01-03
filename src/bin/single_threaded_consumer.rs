@@ -1,5 +1,5 @@
 use rust_orderbook_2::{
-    balance_manager::my_balance_manager2::{BalanceManagerResForLocking, STbalanceManager}, engine::my_engine::{Engine, STEngine}, logger::{log_reciever::LogReciever, types::{BalanceDelta, BaseLogs, HoldingDelta, OrderDelta}}, orderbook::{order::Order, types::Event}, shm::{balance_log_queue::BalanceLogQueue, balance_response_queue::BalanceResponse, holdings_log_queue::HoldingLogQueue, holdings_response_queue::HoldingResponse, reader::StShmReader}
+    balance_manager::my_balance_manager2::{BalanceManagerResForLocking, STbalanceManager}, engine::my_engine::{Engine, STEngine}, logger::{log_reciever::LogReciever, types::{BalanceDelta, BaseLogs, HoldingDelta, OrderDelta, TradeLogs}}, orderbook::{order::Order, types::Event}, shm::{balance_log_queue::BalanceLogQueue, balance_response_queue::BalanceResponse, holdings_log_queue::HoldingLogQueue, holdings_response_queue::HoldingResponse, reader::StShmReader, trade_log_queue::TradeLogQueue}
 };
 use std::time::Instant;
 use rust_orderbook_2::shm::queue::{IncomingOrderQueue};
@@ -269,7 +269,7 @@ fn main() {
     let _ = OrderLogQueue::create("/tmp/OrderLogs").expect("failed to create the Log queue");
     let _ = BalanceLogQueue::create("/tmp/BalanceLogs").expect("failed to open balance log queue");
     let _ = HoldingLogQueue::create("/tmp/HoldingLogs").expect("failed to open holding queues");
-
+    let _ = TradeLogQueue::create("/tmp/TradeLogs").expect("failed to open trade logs queue");
 
 
     let (order_event_producer_bm , order_event_consumer_writter_from_bm) = bounded_spsc_queue::make::<OrderEvents>(32678);
@@ -279,6 +279,7 @@ fn main() {
     let (balance_event_producer_bm , balance_event_consumer_writter) = bounded_spsc_queue::make::<BalanceResponse>(32768);
     let (holding_event_producer_bm , holding_event_consumer_writter) = bounded_spsc_queue::make::<HoldingResponse>(32768);
     let (log_producer_core , log_consumer_logger)=bounded_spsc_queue::make::<BaseLogs>(32786);
+    let (trade_log_producer_publisher , trade_log_consumer_logger)= bounded_spsc_queue::make::<TradeLogs>(32768);
 
 
     let trading_core_handle = std::thread::spawn(move ||{
@@ -307,7 +308,8 @@ fn main() {
         let mut my_publisher = EventPublisher::new(
             pubsub_connection.unwrap() , 
             event_consumer_publisher,
-            order_event_producer_publisher
+            order_event_producer_publisher,
+            trade_log_producer_publisher
         );
         my_publisher.start_publisher();
     });
@@ -334,7 +336,7 @@ fn main() {
 
     let log_reciver_handle = std::thread::spawn(move||{
         core_affinity::set_for_current(core_affinity::CoreId { id: 3 });
-        let mut log_reciver = LogReciever::new(log_consumer_logger);
+        let mut log_reciver = LogReciever::new(log_consumer_logger , trade_log_consumer_logger);
         log_reciver.run();
     });
     

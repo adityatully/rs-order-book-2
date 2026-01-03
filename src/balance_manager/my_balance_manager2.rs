@@ -328,7 +328,6 @@ pub fn run_balance_manager(&mut self) {
     let mut count: u64 = 0;
     let mut last_log = std::time::Instant::now();
     let mut _channel_recv_time = std::time::Duration::ZERO;
-    let  channel_send_time = std::time::Duration::ZERO;
     let mut lock_funds_time = std::time::Duration::ZERO;
     let mut update_balance_time = std::time::Duration::ZERO;
 
@@ -749,9 +748,6 @@ impl STbalanceManager{
 
 
 
-
-                       
-                    
                        let  maker_balance = self.get_user_balance(maker_index);
                        let maker_avail_bal = maker_balance.available_balance;
                        maker_balance.available_balance= maker_avail_bal + fill_value;

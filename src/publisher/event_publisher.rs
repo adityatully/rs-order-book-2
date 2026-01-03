@@ -1,16 +1,24 @@
 use bounded_spsc_queue::{Consumer, Producer};
-use crate::{orderbook::{order::Side, types::{DepthData, Event, TickerData, TradeData}}, pubsub::pubsub_manager::RedisPubSubManager, shm::event_queue::{ OrderEvents}};
+use std::time::{SystemTime, UNIX_EPOCH};
+use crate::{logger::types::TradeLogs, orderbook::{order::Side, types::{DepthData, Event, TickerData, TradeData}}, pubsub::pubsub_manager::RedisPubSubManager, shm::event_queue::OrderEvents};
 pub struct EventPublisher { 
     pub mypubsub : RedisPubSubManager ,
     pub event_queue_from_engine_try : Consumer<Event>,
-    pub event_queue_sender_to_writter_try : Producer<OrderEvents>
+    pub event_queue_sender_to_writter_try : Producer<OrderEvents>,
+    pub trade_log_sender_to_logger : Producer<TradeLogs>
 }
 impl EventPublisher {
-    pub fn new(  mypubsub : RedisPubSubManager  ,  event_queue_from_engine_try : Consumer<Event>,event_queue_sender_to_writter_try : Producer<OrderEvents>) -> Self {
+    pub fn new( 
+        mypubsub : RedisPubSubManager  ,
+        event_queue_from_engine_try : Consumer<Event>,
+        event_queue_sender_to_writter_try : Producer<OrderEvents> ,
+        trade_log_sender_to_logger : Producer<TradeLogs>
+    ) -> Self {
         Self {  
             mypubsub , 
             event_queue_from_engine_try , 
             event_queue_sender_to_writter_try , 
+            trade_log_sender_to_logger
         }
     }
     pub fn start_publisher(&mut self) {
@@ -62,6 +70,7 @@ impl EventPublisher {
                                 rec_event.market_update.symbol, 
                                 rec_event.market_update.event_time, 
                                 rec_event.market_update.trade_time, 
+                                
                                 fill.price, 
                                 fill.quantity, 
                                 fill.maker_order_id, 
@@ -75,6 +84,24 @@ impl EventPublisher {
                             if let Ok(payload)=serde_json::to_vec(&trade_message){
                                 let _ = self.mypubsub.publish(&trade_stream, payload);
                             }
+
+                            let trade_log = TradeLogs{
+                                buyer_order_id : fill.maker_order_id ,
+                                seller_order_id : fill.taker_order_id ,
+                                price : fill.price ,
+                                quantity : fill.quantity,
+                                symbol : fill.symbol ,
+                                is_buyer_maker : match fill.taker_side {
+                                    Side::Ask => true,
+                                    Side::Bid => false
+                                } ,
+                                timestamp : SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_nanos() as i64 , 
+                            };
+
+                            let _ = self.trade_log_sender_to_logger.try_push(trade_log);
                         }
                     }
                     // we need to send trade messages for all fills 
