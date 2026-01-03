@@ -374,7 +374,28 @@ impl OrderBook{
         }
 
         (asks , bids)
+    }
 
+
+    pub fn get_depth_upto_n(&self, n: usize) -> (Vec<(u64, u32)>, Vec<(u64, u32)>) {
+        let asks = self
+            .askside
+            .levels
+            .iter()
+            .rev()               
+            .take(n)
+            .map(|(price, level)| (*price, level.get_total_volume()))
+            .collect::<Vec<_>>();
+    
+        let bids = self
+            .bidside
+            .levels
+            .iter()               // best bid first
+            .take(n)
+            .map(|(price, level)| (*price, level.get_total_volume()))
+            .collect::<Vec<_>>();
+    
+        (asks, bids)
     }
 
     pub fn cancel_order(&mut self ,order_id : u64){
