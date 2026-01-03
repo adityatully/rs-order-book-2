@@ -1,12 +1,13 @@
 use bounded_spsc_queue::{Consumer, Producer};
 use chrono::prelude::*;
 use std::collections::HashMap;
+use crate::logger::types::OrderBookSnapShot;
 use crate::orderbook::order::{Order, Side};
 use crate::orderbook::types::{Event, Fills, MarketUpdateAfterTrade, MatchResult, OrderBookError} ;
 use crate::orderbook::order_book::{ OrderBook};
 use crate::shm::cancel_orders_queue::{ CancelOrderQueue};
 use crate::shm::event_queue::OrderEvents;
-use std::time::{Instant, Duration};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 
 pub trait Engine{
@@ -174,6 +175,8 @@ impl Engine for MyEngine{
 }
 
 
+
+pub const DEPTH_N: usize = 20;
 pub struct STEngine{
     pub engine_id :usize ,
     pub book_count : usize, 
@@ -236,7 +239,24 @@ impl STEngine{
         }
         (None , None)
     }
+
+    pub fn snapshot_for_all_book<F , G>(&mut self , mut emit : F  , mut next_event_id : G )where F : FnMut(OrderBookSnapShot) , G : FnMut()->u64{
+        for (_ , orderbook) in self.books.iter(){
+            let (bids , asks) = orderbook.get_depth_upto_n::<DEPTH_N>();
+            emit(OrderBookSnapShot { 
+                timestamp : SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos() as i64 , 
+                event_id: next_event_id(), 
+                symbol: orderbook.symbol, 
+                bids ,
+                asks
+            });
+        }
+    }
 }
+
 
 impl Engine for STEngine{
     fn add_book(&mut self , symbol : u32) {

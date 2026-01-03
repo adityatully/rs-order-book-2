@@ -5,6 +5,7 @@ use crate::orderbook::types::{Fill , Fills , MatchResult  , OrderBookError};
 
 
 
+
 #[derive(Debug)]
 pub struct OrderBook{
     pub symbol : u32 , 
@@ -361,7 +362,7 @@ impl OrderBook{
 
         {
             let mut cumalative_depth = 0u32;
-            for (price, level) in self.bidside.levels.iter() {
+            for (price, level) in self.bidside.levels.iter(){
                 let qty = level.get_total_volume();
                 cumalative_depth += qty;
     
@@ -377,25 +378,36 @@ impl OrderBook{
     }
 
 
-    pub fn get_depth_upto_n(&self, n: usize) -> (Vec<(u64, u32)>, Vec<(u64, u32)>) {
-        let asks = self
+    pub fn get_depth_upto_n<const N: usize>(
+        &self,
+    ) -> ([(u64, u32); N], [(u64, u32); N]) {
+        let mut bids = [(0u64, 0u32); N];
+        let mut asks = [(0u64, 0u32); N];
+
+        // Best bid → worse
+        for (i, (price, level)) in self
+            .bidside
+            .levels
+            .iter()
+            .take(N)
+            .enumerate()
+        {
+            bids[i] = (*price, level.get_total_volume());
+        }
+
+        // Best ask → worse
+        for (i, (price, level)) in self
             .askside
             .levels
             .iter()
-            .rev()               
-            .take(n)
-            .map(|(price, level)| (*price, level.get_total_volume()))
-            .collect::<Vec<_>>();
-    
-        let bids = self
-            .bidside
-            .levels
-            .iter()               // best bid first
-            .take(n)
-            .map(|(price, level)| (*price, level.get_total_volume()))
-            .collect::<Vec<_>>();
-    
-        (asks, bids)
+            .rev()
+            .take(N)
+            .enumerate()
+        {
+            asks[i] = (*price, level.get_total_volume());
+        }
+
+        (bids, asks)
     }
 
     pub fn cancel_order(&mut self ,order_id : u64){
