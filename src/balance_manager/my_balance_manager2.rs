@@ -882,7 +882,6 @@ impl STbalanceManager{
         self.state.holdings[idx as usize] = UserHoldings::new(user_id);
         
         self.state.user_id_to_index.insert(user_id, idx);
-
         Ok(idx)
 
     }
