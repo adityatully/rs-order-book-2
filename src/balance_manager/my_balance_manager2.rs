@@ -449,13 +449,13 @@ pub enum BalanceManagerResForLocking{
     BalanceManagerResUpdateDeltaBalance(BalanceManagerResUpdateDeltaBalance),
     BalanceManagerResUpdateDeltaHolding(BalanceManagerResUpdateDeltaHolding)
 }
-
 pub struct BalanceManagerResUpdateDeltaBalance{
     pub delta_available_balance : i64 ,
     pub delta_reserved_balance  : i64 ,
 }
 
 pub struct BalanceManagerResUpdateDeltaHolding{
+
     pub delta_available_holding  : i32 ,
     pub delta_reserved_holding   : i32
 }
@@ -515,10 +515,10 @@ impl STbalanceManager{
     pub fn get_user_holdings(&mut self , user_index : u32)->&mut UserHoldings{
         &mut self.state.holdings[user_index as usize]
     }
-    pub fn get_i64(&mut self ,ip : u64)->Result<i64, std::num::TryFromIntError>{
+    pub fn get_i64(& self ,ip : u64)->Result<i64, std::num::TryFromIntError>{
         i64::try_from(ip)
     }
-    pub fn get_i32(&mut self ,ip : u32)->Result<i32, std::num::TryFromIntError>{
+    pub fn get_i32(& self ,ip : u32)->Result<i32, std::num::TryFromIntError>{
         i32::try_from(ip)
     }
     #[inline(always)]
@@ -549,6 +549,14 @@ impl STbalanceManager{
                 holdings.available_holdings[order.symbol as usize] = avalable_holdings_for_symbol - order.shares_qty;
                 holdings.reserved_holdings[order.symbol as usize] = reserved_holdings_for_symbol + order.shares_qty;
 
+                self.holding_update_sender.push(HoldingResponse { 
+                    user_id: order.user_id, 
+                    symbol: order.symbol, 
+                    delta_available_holding: -self.get_i32(order.shares_qty).unwrap(), 
+                    delta_reserved_holding: self.get_i32(order.shares_qty).unwrap()
+                });
+                
+
                 return Ok(BalanceManagerResForLocking::BalanceManagerResUpdateDeltaHolding(BalanceManagerResUpdateDeltaHolding{
                     delta_available_holding : -self.get_i32(order.shares_qty).unwrap(),
                     delta_reserved_holding : self.get_i32(order.shares_qty).unwrap()
@@ -573,6 +581,12 @@ impl STbalanceManager{
                 balance.available_balance = avalaible_balance - required_balance;
                 balance.reserved_balance = reserved_balance + required_balance;  
 
+
+                self.balance_updates_sender.push(BalanceResponse { 
+                    user_id: order.user_id, 
+                    delta_available_balance: -self.get_i64(required_balance).unwrap(), 
+                    delta_reserved_balance: self.get_i64(required_balance).unwrap()
+                });
 
                 return Ok(BalanceManagerResForLocking::BalanceManagerResUpdateDeltaBalance(BalanceManagerResUpdateDeltaBalance { 
                     delta_available_balance: -self.get_i64(required_balance).unwrap(), 
