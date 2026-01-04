@@ -532,14 +532,14 @@ impl STbalanceManager{
         match order.side {
 
             Side::Ask =>{
-                println!("sell order");
+                //println!("sell order");
                 let holdings = self.get_user_holdings(user_index);
                 // wants to sell 
                 let avalable_holdings_for_symbol = holdings.available_holdings[order.symbol as usize];
                 let reserved_holdings_for_symbol = holdings.reserved_holdings[order.symbol as usize];
 
-                println!("available holdings are {:?}" , avalable_holdings_for_symbol);
-                println!("reserved holdings are {:?}" , reserved_holdings_for_symbol);
+                //println!("available holdings are {:?}" , avalable_holdings_for_symbol);
+                //println!("reserved holdings are {:?}" , reserved_holdings_for_symbol);
                 
 
                 if order.shares_qty > avalable_holdings_for_symbol{
@@ -555,7 +555,7 @@ impl STbalanceManager{
                 }));
             }
             Side::Bid =>{
-                println!("buy order");
+                //println!("buy order");
                 // wants to buy  , if balacne > price * qty , we can rserve 
                 // avalable is the free balance right now and reserved is what is alr reserved 
                 let balance = self.get_user_balance(user_index);
@@ -563,8 +563,8 @@ impl STbalanceManager{
                 let avalaible_balance = balance.available_balance;
                 let reserved_balance = balance.reserved_balance;
 
-                println!("available balance is {:?}" ,avalaible_balance);
-                println!("reserved balance is {:?}" , reserved_balance);
+                //println!("available balance is {:?}" ,avalaible_balance);
+                //println!("reserved balance is {:?}" , reserved_balance);
 
                 if required_balance > avalaible_balance {
                     return Err(BalanceManagerError::InsufficientFunds);
@@ -585,7 +585,7 @@ impl STbalanceManager{
     }
     #[inline(always)]
     pub fn update_balances_after_trade<F , G>(&mut self, order_fills: Fills , mut emit : F , mut next_id : G)-> Result<(), BalanceManagerError>  where F : FnMut(BaseLogs) , G : FnMut()->u64 {
-        println!("updating the post trade funds for each fill , sending updates for go cache");
+        //println!("updating the post trade funds for each fill , sending updates for go cache");
         for fill in order_fills.fills {
             
             let maker_index = self.get_user_index(fill.maker_user_id)?;

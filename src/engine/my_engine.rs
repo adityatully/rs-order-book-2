@@ -218,7 +218,7 @@ impl STEngine{
                 }
             
             };
-            println!("events after natching the order {:?}" , events);
+            //println!("events after natching the order {:?}" , events);
             if let Ok(match_result) = events {
                 let now_utc = Utc::now();
                 let order_book_symbol = order_book.symbol;
@@ -241,8 +241,12 @@ impl STEngine{
     }
 
     pub fn snapshot_for_all_book<F , G>(&mut self , mut emit : F  , mut next_event_id : G )where F : FnMut(OrderBookSnapShot) , G : FnMut()->u64{
-        for (_ , orderbook) in self.books.iter(){
+       // println!("inside the snapthost function");
+        for (_, orderbook) in self.books.iter(){
+           // println!("{:?}" , symbol);
             let (bids , asks) = orderbook.get_depth_upto_n::<DEPTH_N>();
+           // println!("{:?}" , bids);
+           // println!("{:?}" , asks);
             emit(OrderBookSnapShot { 
                 timestamp : SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -256,6 +260,7 @@ impl STEngine{
         }
     }
 }
+
 
 
 impl Engine for STEngine{

@@ -1,22 +1,25 @@
 use bounded_spsc_queue::Consumer;
-use crate::{logger::types::{BalanceLogWrapper, BaseLogs, HoldingLogWrapper, OrderLogWrapper, TradeLogs}, shm::{balance_log_queue::BalanceLogQueue, holdings_log_queue::{self, HoldingLogQueue}, order_log_queue::OrderLogQueue, trade_log_queue::TradeLogQueue}};
+use crate::{logger::types::{BalanceLogWrapper, BaseLogs, HoldingLogWrapper, OrderBookSnapShot, OrderLogWrapper, TradeLogs}, shm::{balance_log_queue::BalanceLogQueue, holdings_log_queue::{self, HoldingLogQueue}, order_log_queue::OrderLogQueue, snapshot_queue::{self, OrderBookSnapShotQueue}, trade_log_queue::TradeLogQueue}};
 use std::time::{SystemTime, UNIX_EPOCH};
 pub struct LogReciever{
     pub order_log_shm_queue : OrderLogQueue,
     pub balance_log_shm_queue : BalanceLogQueue ,
     pub holding_log_shm_queue : HoldingLogQueue ,
     pub trade_log_queue       : TradeLogQueue,
+    pub snap_shot_queue       : OrderBookSnapShotQueue,
     pub logs_recv_from_core : Consumer<BaseLogs> , 
-    pub logs_recv_from_publisher : Consumer<TradeLogs>
+    pub logs_recv_from_publisher : Consumer<TradeLogs>,
+    pub snapshot_recv : Consumer<OrderBookSnapShot>
 
 }
 
 impl LogReciever{
-    pub fn new(logs_recv_from_core : Consumer<BaseLogs> , logs_recv_from_publisher : Consumer<TradeLogs>)->Self{
+    pub fn new(logs_recv_from_core : Consumer<BaseLogs> , logs_recv_from_publisher : Consumer<TradeLogs> , snapshot_recv : Consumer<OrderBookSnapShot>)->Self{
         let order_log_shm_queue = OrderLogQueue::open("/tmp/OrderLogs");
         let balance_log_shm_queue = BalanceLogQueue::open("/tmp/BalanceLogs");
         let holdings_log_queue = HoldingLogQueue::open("/tmp/HoldingLogs");
         let trade_log_queue = TradeLogQueue::open("/tmp/TradeLogs");
+        let snapshot_queue = OrderBookSnapShotQueue::open("/tmp/SnapShot");
         if order_log_shm_queue.is_err(){
             eprintln!("failed to open the order log queue");
         }
@@ -29,6 +32,9 @@ impl LogReciever{
         if trade_log_queue.is_err(){
             eprintln!("failed to open the trade log queue");
         }
+        if snapshot_queue.is_err(){
+            eprintln!("failed to open the trade log queue");
+        }
 
         Self{
             order_log_shm_queue :   order_log_shm_queue.unwrap(),
@@ -36,7 +42,9 @@ impl LogReciever{
             holding_log_shm_queue : holdings_log_queue.unwrap(),
             logs_recv_from_core  ,
             trade_log_queue : trade_log_queue.unwrap() , 
-            logs_recv_from_publisher
+            logs_recv_from_publisher ,
+            snapshot_recv , 
+            snap_shot_queue : snapshot_queue.unwrap()
         }
     }
 
@@ -80,6 +88,11 @@ impl LogReciever{
 
             if let Some(trade_log) = self.logs_recv_from_publisher.try_pop(){
                 let _ = self.trade_log_queue.enqueue(trade_log);
+            }
+
+            if let Some(orderbook_snapshot) = self.snapshot_recv.try_pop(){
+                println!("recieved snapshot , enqueing");
+                let _ = self.snap_shot_queue.enqueue(orderbook_snapshot);
             }
         }
     }

@@ -28,8 +28,8 @@ impl EventPublisher {
             match self.event_queue_from_engine_try.try_pop(){
 
                 Some(rec_event) => {
-                    println!("event recived byy publisher");
-                    println!("sending ticker depth and trade messages for the FE ");
+                    //println!("event recived byy publisher");
+                    //println!("sending ticker depth and trade messages for the FE ");
                     {
                         let ticker_message = TickerData::new(
                             String::from("ticker"), 
@@ -107,12 +107,12 @@ impl EventPublisher {
                     // we need to send trade messages for all fills 
                     // sedning order events to the shm writter for the partuclar order updates 
                     // check if fills are really needed or not for the user 
-                    println!("sending order event to the API for the order we got ");
+                    //println!("sending order event to the API for the order we got ");
 
                     let orignal_qty =  rec_event.market_update.match_result.orignal_qty;
                     let remaining_qty = rec_event.market_update.match_result.remaining_qty;
-                    println!("orignal quantiyi {:?}" , orignal_qty);
-                    println!("remaining quantiyi {:?}" , remaining_qty);
+                   // println!("orignal quantiyi {:?}" , orignal_qty);
+                   // println!("remaining quantiyi {:?}" , remaining_qty);
                     if remaining_qty == 0  {
                         let _ = self.event_queue_sender_to_writter_try.push(OrderEvents {
                              user_id: rec_event.market_update.match_result.user_id, 

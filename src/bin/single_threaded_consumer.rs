@@ -1,7 +1,8 @@
+
 use rust_orderbook_2::{
-    balance_manager::my_balance_manager2::{BalanceManagerResForLocking, STbalanceManager}, engine::my_engine::{Engine, STEngine}, logger::{log_reciever::LogReciever, types::{BalanceDelta, BaseLogs, HoldingDelta, OrderDelta, TradeLogs}}, orderbook::{order::Order, types::Event}, shm::{balance_log_queue::BalanceLogQueue, balance_response_queue::BalanceResponse, holdings_log_queue::HoldingLogQueue, holdings_response_queue::HoldingResponse, reader::StShmReader, trade_log_queue::TradeLogQueue}
+    balance_manager::my_balance_manager2::{BalanceManagerResForLocking, STbalanceManager}, engine::my_engine::{Engine, STEngine}, logger::{log_reciever::LogReciever, types::{BalanceDelta, BaseLogs, HoldingDelta, OrderBookSnapShot, OrderDelta, TradeLogs}}, orderbook::{order::Order, types::Event}, shm::{balance_log_queue::BalanceLogQueue, balance_response_queue::BalanceResponse, holdings_log_queue::HoldingLogQueue, holdings_response_queue::HoldingResponse, reader::StShmReader, snapshot_queue::OrderBookSnapShotQueue, trade_log_queue::TradeLogQueue}
 };
-use std::time::Instant;
+use std::time::{Instant , Duration};
 use rust_orderbook_2::shm::queue::{IncomingOrderQueue};
 use rust_orderbook_2::shm::balance_response_queue::BalanceResQueue;
 use rust_orderbook_2::shm::cancel_orders_queue::CancelOrderQueue;
@@ -25,13 +26,16 @@ fn next_event_id() -> u64 {
     }
 }
 
+const SNAPSHOT_INTERVAL: Duration = Duration::from_secs(30);
 pub struct TradingCore {
     pub balance_manager: STbalanceManager,
     pub shm_reader: StShmReader,
     pub engine: STEngine,
     processed_count: u64,
     order_batch : Vec<Order> , 
-    pub log_sender_to_logger : Producer<BaseLogs>
+    pub log_sender_to_logger : Producer<BaseLogs>,
+    pub snapshot_sender_to_logger : Producer<OrderBookSnapShot> ,
+    pub last_snap_shot : Instant,
 }
 impl TradingCore {
     pub fn new(
@@ -40,7 +44,8 @@ impl TradingCore {
         order_event_producer_engine : Producer<OrderEvents>,
         balance_event_producer_bm : Producer<BalanceResponse>,
         holding_event_producer_bm : Producer<HoldingResponse>,
-        log_sender_to_logger : Producer<BaseLogs>
+        log_sender_to_logger : Producer<BaseLogs>,
+        snapshot_sender_to_logger : Producer<OrderBookSnapShot>
     ) -> Self {
         Self {
             balance_manager: STbalanceManager::new(event_sender_to_writter , balance_event_producer_bm , holding_event_producer_bm),
@@ -48,17 +53,21 @@ impl TradingCore {
             engine: STEngine::new(0 , event_sender_to_publisher_by_engine , order_event_producer_engine),
             processed_count: 0,
             order_batch : Vec::with_capacity(1000),
-            log_sender_to_logger
+            log_sender_to_logger , 
+            snapshot_sender_to_logger,
+            last_snap_shot : Instant::now()
         }
     }
     pub fn run(&mut self) {
         eprintln!("[Trading Core] Starting single-threaded mode");
+
         loop {
+
             self.order_batch.clear();
             for _ in 0 ..1000{
                 if let Some(order) = self.shm_reader.receive_order() {
                     // some order recved 
-                    println!("order recived {:?}" , order);
+                    //println!("order recived {:?}" , order);
                     self.log_sender_to_logger.try_push(BaseLogs::OrderDelta(OrderDelta{
                         event_id : next_event_id(),
                         order_id : order.order_id ,
@@ -82,7 +91,7 @@ impl TradingCore {
             for order in self.order_batch.drain(..){
                 match self.balance_manager.check_and_lock_funds(order) {
                     Ok(balance_response_for_logger) => {
-                        println!("balances have been locked and holdings reserved it ws valid order");
+                        //println!("balances have been locked and holdings reserved it ws valid order");
                         // balances have been locked or holding shave been reserved 
                         match balance_response_for_logger {
                             BalanceManagerResForLocking::BalanceManagerResUpdateDeltaBalance(balance_delta)=>{
@@ -114,8 +123,8 @@ impl TradingCore {
                         match engine_res.0 {
                             Some(match_result) => {
                                 // log that order has been matched 
-                                println!("{:?}" , match_result);
-                                println!("logging that order has been matched ");
+                                //println!("{:?}" , match_result);
+                                //println!("logging that order has been matched ");
                                 self.log_sender_to_logger.try_push(BaseLogs::OrderDelta(OrderDelta { 
                                     event_id: next_event_id(), 
                                     order_id: order.order_id, 
@@ -153,7 +162,7 @@ impl TradingCore {
 
                         match engine_res.1 {
                             Some(market_update)=>{
-                                println!("sending data to publisher");
+                               // println!("sending data to publisher");
                                let _ = self.engine.sending_event_to_publisher_try.try_push(Event::new(market_update));
                             }
                             None=>{
@@ -251,7 +260,19 @@ impl TradingCore {
                 }
                 Ok(None)=>{}
                 Err(_)=>{}
-            }        
+            }     
+
+            if self.last_snap_shot.elapsed() >= SNAPSHOT_INTERVAL{
+                //println!("need to send snapshot now");
+                self.engine.snapshot_for_all_book(|snapshot|{
+                    //println!("sending snapshot to logg recv");
+                    //println!("{:?}" , snapshot);
+                    let _ = self.snapshot_sender_to_logger.try_push(snapshot);
+                }, next_event_id);
+                self.last_snap_shot = Instant::now();
+            }   
+
+
         }
     }
 }
@@ -270,6 +291,7 @@ fn main() {
     let _ = BalanceLogQueue::create("/tmp/BalanceLogs").expect("failed to open balance log queue");
     let _ = HoldingLogQueue::create("/tmp/HoldingLogs").expect("failed to open holding queues");
     let _ = TradeLogQueue::create("/tmp/TradeLogs").expect("failed to open trade logs queue");
+    let _ = OrderBookSnapShotQueue::create("/tmp/SnapShot").expect("failed to open snap shot queue");
 
 
     let (order_event_producer_bm , order_event_consumer_writter_from_bm) = bounded_spsc_queue::make::<OrderEvents>(32678);
@@ -280,6 +302,7 @@ fn main() {
     let (holding_event_producer_bm , holding_event_consumer_writter) = bounded_spsc_queue::make::<HoldingResponse>(32768);
     let (log_producer_core , log_consumer_logger)=bounded_spsc_queue::make::<BaseLogs>(32786);
     let (trade_log_producer_publisher , trade_log_consumer_logger)= bounded_spsc_queue::make::<TradeLogs>(32768);
+    let (orderbook_snapshot_sender , order_book_snapshot_reciver) = bounded_spsc_queue::make::<OrderBookSnapShot>(32768);
 
 
     let trading_core_handle = std::thread::spawn(move ||{
@@ -290,7 +313,8 @@ fn main() {
             order_event_producer_engine,
             balance_event_producer_bm,
             holding_event_producer_bm,
-            log_producer_core
+            log_producer_core ,
+            orderbook_snapshot_sender
         );
         trading_system.balance_manager.add_throughput_test_users();
         trading_system.engine.add_book(0);
@@ -336,7 +360,10 @@ fn main() {
 
     let log_reciver_handle = std::thread::spawn(move||{
         core_affinity::set_for_current(core_affinity::CoreId { id: 3 });
-        let mut log_reciver = LogReciever::new(log_consumer_logger , trade_log_consumer_logger);
+        let mut log_reciver = LogReciever::new(
+log_consumer_logger , 
+trade_log_consumer_logger , 
+order_book_snapshot_reciver) ;
         log_reciver.run();
     });
     
