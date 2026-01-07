@@ -16,15 +16,14 @@ use rust_orderbook_2::shm::writer::ShmWriter;
 use rust_orderbook_2::shm::order_log_queue::OrderLogQueue;
 use rust_orderbook_2::publisher::event_publisher::EventPublisher;
 use rust_orderbook_2::orderbook::order::Side;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-static mut EVENT_ID: u64 = 1;
+static EVENT_ID: AtomicU64 = AtomicU64::new(1);
+#[inline(always)]
 fn next_event_id() -> u64 {
-    unsafe {
-        let id = EVENT_ID;
-        EVENT_ID += 1;
-        id
-    }
+    EVENT_ID.fetch_add(1, Ordering::Relaxed)
 }
+
 
 const SNAPSHOT_INTERVAL: Duration = Duration::from_secs(30);
 pub struct TradingCore {

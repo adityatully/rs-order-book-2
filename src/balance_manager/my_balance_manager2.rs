@@ -663,9 +663,6 @@ impl STbalanceManager{
                             delta_reserved: -self.get_i32(fill.quantity).unwrap(), 
                             reason: 1 
                         }));
-
-
-                    
                         
                         let  maker_balance = self.get_user_balance(maker_index);
                         let maker_reserved_bal = maker_balance.reserved_balance;
