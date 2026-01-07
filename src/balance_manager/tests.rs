@@ -6,6 +6,7 @@ mod tests {
     use crossbeam::channel::{Sender, Receiver};
     use crate::orderbook::order::{Order, Side};
     use crate::orderbook::types::{Fills, Fill,OrderId};
+    use smallvec::smallvec;
 
     // Helper function to create a test balance manager
     fn setup_balance_manager() -> (MyBalanceManager, Receiver<Order>, Sender<Fills>, Sender<Order>) {
@@ -201,7 +202,7 @@ mod tests {
         );
         
         let fills = Fills {
-            fills: vec![fill],
+            fills:smallvec![fill],
         };
         
         // Update balances
@@ -253,7 +254,7 @@ mod tests {
         );
         
         let fills = Fills {
-            fills: vec![fill],
+            fills: smallvec![fill],
         };
         
         let result = bm.update_balances_after_trade(fills);
@@ -294,7 +295,7 @@ mod tests {
         );
         
         let fills1 = Fills {
-            fills: vec![fill1],
+            fills: smallvec![fill1],
         };
         
         bm.update_balances_after_trade(fills1).unwrap();
@@ -325,7 +326,7 @@ mod tests {
         
         // First fill - 30 shares
         let fill1 = create_test_fill(20, 10, 2, 1, Side::Bid, 50, 30, 0);
-        bm.update_balances_after_trade(Fills { fills: vec![fill1] }).unwrap();
+        bm.update_balances_after_trade(Fills { fills: smallvec![fill1] }).unwrap();
         
         // Second seller order for 40 shares
         let sell_order2 = create_test_order(20, 3, Side::Ask, 40, 50, 0);
@@ -333,7 +334,7 @@ mod tests {
         
         // Second fill - 40 shares
         let fill2 = create_test_fill(20, 10, 3, 1, Side::Bid, 50, 40, 0);
-        bm.update_balances_after_trade(Fills { fills: vec![fill2] }).unwrap();
+        bm.update_balances_after_trade(Fills { fills: smallvec![fill2] }).unwrap();
         
         let balance = bm.get_user_balance(1);
         let holdings = bm.get_user_holdings(1);
@@ -370,7 +371,7 @@ mod tests {
         let fill3 = create_test_fill(20, 10, 4, 1, Side::Bid, 50, 30, 0);
         
         let fills = Fills {
-            fills: vec![fill1, fill2, fill3],
+            fills: smallvec![fill1, fill2, fill3],
         };
         
         bm.update_balances_after_trade(fills).unwrap();
@@ -500,7 +501,7 @@ mod tests {
         
         // 6. Engine sends back fill
         let fill = create_test_fill(20, 10, 2, 1, Side::Bid, 100, 10, 0);
-        fill_tx.send(Fills { fills: vec![fill] }).unwrap();
+        fill_tx.send(Fills { fills: smallvec![fill] }).unwrap();
         
         // 7. Balance manager updates from fill
         let received_fill = bm.fill_recv.try_recv().unwrap();
@@ -536,7 +537,7 @@ mod tests {
         
         // First partial fill - 40 shares
         let fill1 = create_test_fill(20, 10, 2, 1, Side::Bid, 50, 40, 0);
-        fill_tx.send(Fills { fills: vec![fill1] }).unwrap();
+        fill_tx.send(Fills { fills: smallvec![fill1] }).unwrap();
         let received_fill1 = bm.fill_recv.try_recv().unwrap();
         bm.update_balances_after_trade(received_fill1).unwrap();
         
@@ -546,7 +547,7 @@ mod tests {
         
         // Second partial fill - 60 shares (complete)
         let fill2 = create_test_fill(20, 10, 3, 1, Side::Bid, 50, 60, 0);
-        fill_tx.send(Fills { fills: vec![fill2] }).unwrap();
+        fill_tx.send(Fills { fills: smallvec![fill2] }).unwrap();
         let received_fill2 = bm.fill_recv.try_recv().unwrap();
         bm.update_balances_after_trade(received_fill2).unwrap();
         
@@ -579,7 +580,7 @@ mod tests {
         
         // They match
         let fill = create_test_fill(20, 10, 2, 1, Side::Bid, 100, 50, 0);
-        fill_tx.send(Fills { fills: vec![fill] }).unwrap();
+        fill_tx.send(Fills { fills: smallvec![fill] }).unwrap();
         let received_fill = bm.fill_recv.try_recv().unwrap();
         bm.update_balances_after_trade(received_fill).unwrap();
         

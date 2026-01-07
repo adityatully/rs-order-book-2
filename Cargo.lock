@@ -1640,6 +1640,7 @@ dependencies = [
  "serde",
  "serde_json",
  "slotmap",
+ "smallvec",
  "static_assertions",
  "thiserror 2.0.17",
  "tokio",

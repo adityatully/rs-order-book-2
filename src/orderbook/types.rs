@@ -3,7 +3,7 @@ use crate::{orderbook::order::Side, publisher::event_publisher::EventPublisher};
 pub type OrderId = u64;
 use thiserror::Error;
 use serde::{Serialize, Deserialize };
-
+use smallvec::SmallVec;
 
 #[derive(Debug , Clone , Copy)]
 pub struct Fill{
@@ -39,13 +39,13 @@ impl Fill{
 }
 #[derive(Debug  , Clone  )]
 pub struct Fills{
-    pub fills : Vec<Fill>
+    pub fills : SmallVec<[Fill; 8]>
 }
 
 impl Fills{
     pub fn new()->Self{
         Self{
-            fills : Vec::with_capacity(1000)
+            fills : SmallVec::new()
         }
     }
 
