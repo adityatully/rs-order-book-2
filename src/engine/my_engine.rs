@@ -11,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 // 100 max symbols for now 
 
-
+const MAX_SYMBOLS : usize = 100 ; 
 pub trait Engine{
     fn add_book(&mut self , symbol : u32);
     fn get_book(&self , symbol : u32)->Option<&OrderBook>; // can only get a refrence , orderbooks are owned by the engine
@@ -197,7 +197,7 @@ impl STEngine{
             Self{
                 engine_id,
                 book_count : 0 ,
-                books : Vec::with_capacity(100),
+                books : (0..MAX_SYMBOLS).map(|_| None).collect(),
                 cancel_order_queue : cancel_order_queue.unwrap(),
                 sending_event_to_publisher_try : event_sender_to_publisher,
                 sending_order_events_to_writter_try
@@ -272,7 +272,7 @@ impl STEngine{
 impl Engine for STEngine{
     fn add_book(&mut self , symbol : u32) {
         let new_book = OrderBook::new(symbol);
-        self.books[symbol as usize] = Some( new_book);
+        self.books[symbol as usize] = Some(new_book);
         self.book_count = self.book_count.saturating_add(1);
     }
     fn get_book(&self , symbol : u32)->Option<&OrderBook> {
